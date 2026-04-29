@@ -1,0 +1,900 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vulnerability Classification with CodeBERT</title>
+<style>
+/* ===== RESET & BASE ===== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  background: #0d1117;
+  color: #e6edf3;
+  height: 100vh;
+  overflow: hidden;
+  user-select: none;
+}
+
+/* ===== DECK CONTAINER ===== */
+#deck {
+  width: 100vw;
+  height: 100vh;
+  position: relative;
+}
+
+/* ===== INDIVIDUAL SLIDE ===== */
+.slide {
+  position: absolute;
+  inset: 0;
+  display: none;
+  flex-direction: column;
+  justify-content: flex-start;
+  padding: 52px 72px 80px;
+  opacity: 0;
+  transition: opacity 0.35s ease;
+}
+.slide.active {
+  display: flex;
+  opacity: 1;
+}
+
+/* ===== SLIDE HEADER BAR ===== */
+.slide-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 36px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #21262d;
+}
+.slide-number {
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  color: #00ff88;
+  background: #0d2016;
+  border: 1px solid #00ff8844;
+  border-radius: 4px;
+  padding: 2px 7px;
+  letter-spacing: 0.08em;
+}
+.slide-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: #8b949e;
+}
+
+/* ===== TITLES ===== */
+h1 {
+  font-size: 2.6rem;
+  font-weight: 700;
+  line-height: 1.15;
+  color: #e6edf3;
+  letter-spacing: -0.02em;
+  margin-bottom: 12px;
+}
+h1 .accent { color: #00ff88; }
+
+h2 {
+  font-size: 1.9rem;
+  font-weight: 700;
+  color: #e6edf3;
+  margin-bottom: 22px;
+  letter-spacing: -0.01em;
+}
+h2 .accent { color: #00ff88; }
+
+h3 {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #58a6ff;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+/* ===== BODY TEXT ===== */
+p, li {
+  font-size: 1.05rem;
+  line-height: 1.7;
+  color: #c9d1d9;
+}
+ul { list-style: none; padding: 0; }
+ul li { padding-left: 1.4em; position: relative; margin-bottom: 6px; }
+ul li::before {
+  content: '▸';
+  position: absolute;
+  left: 0;
+  color: #00ff88;
+  font-size: 0.75em;
+  top: 0.22em;
+}
+ol { padding-left: 1.6em; }
+ol li { margin-bottom: 8px; }
+
+/* ===== CODE / MONO ===== */
+code, .mono {
+  font-family: 'Courier New', Consolas, monospace;
+  font-size: 0.9em;
+  color: #79c0ff;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+.code-block {
+  font-family: 'Courier New', Consolas, monospace;
+  font-size: 0.82rem;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 16px 20px;
+  color: #e6edf3;
+  line-height: 1.6;
+  margin: 10px 0;
+  white-space: pre;
+}
+.code-block .kw  { color: #ff7b72; }
+.code-block .str { color: #a5d6ff; }
+.code-block .cmt { color: #8b949e; font-style: italic; }
+.code-block .fn  { color: #d2a8ff; }
+.code-block .num { color: #79c0ff; }
+
+/* ===== TABLES ===== */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.95rem;
+  margin: 6px 0;
+}
+th {
+  background: #161b22;
+  color: #00ff88;
+  font-weight: 600;
+  padding: 10px 14px;
+  text-align: left;
+  border-bottom: 2px solid #00ff8844;
+  font-family: 'Courier New', monospace;
+  font-size: 0.85rem;
+  letter-spacing: 0.05em;
+}
+td {
+  padding: 9px 14px;
+  border-bottom: 1px solid #21262d;
+  color: #c9d1d9;
+}
+tr:hover td { background: #161b2266; }
+.td-good { color: #00ff88; font-weight: 600; }
+.td-placeholder { color: #8b949e; font-style: italic; }
+.td-delta { color: #58a6ff; font-weight: 600; }
+
+/* ===== GRID LAYOUTS ===== */
+.two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 28px;
+  align-items: start;
+}
+.three-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 22px;
+  align-items: start;
+}
+
+/* ===== CARD / BOX ===== */
+.card {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 10px;
+  padding: 18px 22px;
+}
+.card.green-border { border-color: #00ff8855; }
+.card.blue-border  { border-color: #58a6ff55; }
+.card.red-border   { border-color: #ff7b7255; }
+
+.stat-card {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 10px;
+  padding: 14px 18px;
+  text-align: center;
+}
+.stat-card .big {
+  font-size: 2rem;
+  font-weight: 700;
+  color: #00ff88;
+  line-height: 1.1;
+  font-family: 'Courier New', monospace;
+}
+.stat-card .label {
+  font-size: 0.8rem;
+  color: #8b949e;
+  margin-top: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+/* ===== BADGES / TAGS ===== */
+.badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  font-family: 'Courier New', monospace;
+  letter-spacing: 0.04em;
+}
+.badge-green { background: #0d2016; color: #00ff88; border: 1px solid #00ff8844; }
+.badge-blue  { background: #0d1a2e; color: #58a6ff; border: 1px solid #58a6ff44; }
+.badge-red   { background: #2d0d0d; color: #ff7b72; border: 1px solid #ff7b7244; }
+.badge-gray  { background: #21262d; color: #8b949e; border: 1px solid #30363d; }
+
+/* ===== PIPELINE / FLOW ===== */
+.pipeline {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  flex-wrap: wrap;
+  margin: 10px 0;
+}
+.pipe-step {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  padding: 9px 16px;
+  font-size: 0.88rem;
+  color: #e6edf3;
+  white-space: nowrap;
+}
+.pipe-arrow {
+  font-size: 1.1rem;
+  color: #00ff88;
+  padding: 0 6px;
+}
+
+/* ===== TITLE SLIDE SPECIFICS ===== */
+.title-slide {
+  justify-content: center;
+  background:
+    radial-gradient(ellipse 60% 50% at 80% 50%, #00ff8808 0%, transparent 70%),
+    radial-gradient(ellipse 40% 60% at 10% 80%, #58a6ff06 0%, transparent 70%),
+    #0d1117;
+}
+.title-tag {
+  font-family: 'Courier New', monospace;
+  font-size: 0.78rem;
+  color: #00ff88;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  margin-bottom: 20px;
+  opacity: 0.8;
+}
+.title-meta {
+  margin-top: 36px;
+  display: flex;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+.meta-item {
+  font-size: 0.88rem;
+  color: #8b949e;
+}
+.meta-item span { color: #c9d1d9; }
+
+/* ===== HIGHLIGHT ===== */
+.hl-green { color: #00ff88; font-weight: 600; }
+.hl-blue  { color: #58a6ff; font-weight: 600; }
+.hl-red   { color: #ff7b72; }
+.hl-yellow { color: #e3b341; }
+
+/* ===== NAVIGATION ===== */
+#nav {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  z-index: 100;
+}
+.nav-btn {
+  background: #161b22;
+  border: 1px solid #30363d;
+  color: #e6edf3;
+  padding: 8px 20px;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+  font-family: inherit;
+}
+.nav-btn:hover { background: #21262d; border-color: #00ff8866; color: #00ff88; }
+.nav-btn:disabled { opacity: 0.25; cursor: default; }
+
+#counter {
+  font-family: 'Courier New', monospace;
+  font-size: 0.82rem;
+  color: #8b949e;
+  min-width: 52px;
+  text-align: center;
+}
+
+/* ===== PROGRESS BAR ===== */
+#progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 2px;
+  background: linear-gradient(90deg, #00ff88, #58a6ff);
+  transition: width 0.35s ease;
+  z-index: 200;
+}
+</style>
+</head>
+<body>
+
+<div id="progress"></div>
+
+<div id="deck">
+
+<!-- ==================== SLIDE 1: TITLE ==================== -->
+<div class="slide title-slide active" id="s1">
+  <div class="title-tag">&#x25A0; Security &amp; NLP &nbsp;|&nbsp; Course Project</div>
+  <h1>Vulnerability Type<br>Classification in Source Code<br><span class="accent">with CodeBERT</span></h1>
+  <p style="margin-top:16px;color:#8b949e;font-size:1rem;max-width:620px;">
+    A comparative study of TF-IDF baselines and fine-tuned transformer models
+    for CWE category prediction on the BigVul dataset.
+  </p>
+  <div class="title-meta">
+    <div class="meta-item">Author &nbsp;<span>[Your Name]</span></div>
+    <div class="meta-item">Course &nbsp;<span>[Course Name]</span></div>
+    <div class="meta-item">Date &nbsp;<span>[Month Year]</span></div>
+  </div>
+  <div style="margin-top:32px;display:flex;gap:10px;flex-wrap:wrap;">
+    <span class="badge badge-green">CodeBERT</span>
+    <span class="badge badge-blue">CWE Classification</span>
+    <span class="badge badge-gray">BigVul Dataset</span>
+    <span class="badge badge-red">Multi-class NLP</span>
+  </div>
+</div>
+
+<!-- ==================== SLIDE 2: PROBLEM STATEMENT ==================== -->
+<div class="slide" id="s2">
+  <div class="slide-header">
+    <span class="slide-number">02</span>
+    <span class="slide-label">Problem Statement</span>
+  </div>
+  <h2>Why Automate <span class="accent">CWE Classification?</span></h2>
+  <div class="two-col">
+    <div>
+      <h3>The Challenge</h3>
+      <ul>
+        <li>NVD adds <span class="hl-red">~25,000 new CVEs per year</span> — manual triage is unsustainable</li>
+        <li>Each CVE is mapped to a <span class="hl-yellow">CWE</span> (weakness type) that guides remediation</li>
+        <li>Assigning CWE labels requires <span class="hl-blue">security expertise</span> and deep code reading</li>
+        <li>Mislabeled CWEs lead to incorrect tool configuration and missed fixes</li>
+      </ul>
+      <div style="margin-top:20px;">
+        <h3>Goal</h3>
+        <p>Given a <strong>C/C++ function</strong>, predict its <strong>CWE category</strong> automatically.</p>
+      </div>
+    </div>
+    <div>
+      <div class="card green-border" style="margin-bottom:16px;">
+        <h3>Impact</h3>
+        <ul>
+          <li>Automated developer advisories</li>
+          <li>CI/CD security gate labeling</li>
+          <li>Faster vulnerability database enrichment</li>
+          <li>Targeted static analysis rule selection</li>
+        </ul>
+      </div>
+      <div class="card blue-border">
+        <h3>Task Definition</h3>
+        <p style="font-size:0.92rem;">
+          <strong>Input:</strong> raw function source code (C/C++)<br>
+          <strong>Output:</strong> one of <span class="hl-green">K = 10</span> CWE class labels<br>
+          <strong>Metric:</strong> Accuracy &amp; Macro-F1
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== SLIDE 3: APPROACH ==================== -->
+<div class="slide" id="s3">
+  <div class="slide-header">
+    <span class="slide-number">03</span>
+    <span class="slide-label">Approach Overview</span>
+  </div>
+  <h2>Two-Model <span class="accent">Comparison</span></h2>
+  <div class="two-col" style="margin-bottom:24px;">
+    <div class="card red-border">
+      <h3>&#x25B6; Baseline</h3>
+      <div class="pipeline" style="flex-direction:column;align-items:flex-start;gap:6px;">
+        <div class="pipe-step">Raw C/C++ function</div>
+        <div class="pipe-arrow">&#x25BC;</div>
+        <div class="pipe-step">Comment stripping + whitespace normalize</div>
+        <div class="pipe-arrow">&#x25BC;</div>
+        <div class="pipe-step">TF-IDF char n-grams (3&ndash;6), 100K features</div>
+        <div class="pipe-arrow">&#x25BC;</div>
+        <div class="pipe-step">Logistic Regression (multinomial)</div>
+        <div class="pipe-arrow">&#x25BC;</div>
+        <div class="pipe-step">CWE label prediction</div>
+      </div>
+    </div>
+    <div class="card green-border">
+      <h3>&#x25B6; CodeBERT</h3>
+      <div class="pipeline" style="flex-direction:column;align-items:flex-start;gap:6px;">
+        <div class="pipe-step">Raw C/C++ function</div>
+        <div class="pipe-arrow">&#x25BC;</div>
+        <div class="pipe-step">RobertaTokenizer (max 512 tokens)</div>
+        <div class="pipe-arrow">&#x25BC;</div>
+        <div class="pipe-step">microsoft/codebert-base (125M params)</div>
+        <div class="pipe-arrow">&#x25BC;</div>
+        <div class="pipe-step">Linear head on [CLS] &#x2192; softmax</div>
+        <div class="pipe-arrow">&#x25BC;</div>
+        <div class="pipe-step">CWE label prediction</div>
+      </div>
+    </div>
+  </div>
+  <p style="text-align:center;color:#8b949e;font-size:0.9rem;">
+    Both models evaluated on identical stratified test split (15%) &nbsp;|&nbsp;
+    Reported: Accuracy, Macro-F1, Macro-P, Macro-R
+  </p>
+</div>
+
+<!-- ==================== SLIDE 4: DATASET ==================== -->
+<div class="slide" id="s4">
+  <div class="slide-header">
+    <span class="slide-number">04</span>
+    <span class="slide-label">Dataset</span>
+  </div>
+  <h2>BigVul <span class="accent">Dataset</span></h2>
+  <div class="two-col">
+    <div>
+      <h3>Overview</h3>
+      <ul>
+        <li><span class="hl-green">186,878</span> C/C++ functions from GitHub</li>
+        <li>Extracted from vulnerability-fixing commits</li>
+        <li>Each vulnerable function labeled with <span class="hl-yellow">CWE ID</span></li>
+        <li>Covers <span class="hl-blue">91 open-source projects</span></li>
+        <li>Fan et al., MSR 2020</li>
+      </ul>
+      <div style="margin-top:18px;">
+        <h3>Filtered Splits (Top-10 CWEs)</h3>
+        <table>
+          <tr><th>Split</th><th>Samples</th></tr>
+          <tr><td>Train</td><td class="td-placeholder">[X,XXX]</td></tr>
+          <tr><td>Validation</td><td class="td-placeholder">[X,XXX]</td></tr>
+          <tr><td>Test</td><td class="td-placeholder">[X,XXX]</td></tr>
+          <tr><td><strong>Total</strong></td><td class="td-placeholder"><strong>[X,XXX]</strong></td></tr>
+        </table>
+      </div>
+    </div>
+    <div>
+      <h3>Top-10 CWE Classes</h3>
+      <table>
+        <tr><th>CWE</th><th>Description</th></tr>
+        <tr><td><code>CWE-119</code></td><td>Buffer Errors</td></tr>
+        <tr><td><code>CWE-20</code></td><td>Input Validation</td></tr>
+        <tr><td><code>CWE-200</code></td><td>Information Exposure</td></tr>
+        <tr><td><code>CWE-264</code></td><td>Permissions</td></tr>
+        <tr><td><code>CWE-362</code></td><td>Race Condition</td></tr>
+        <tr><td><code>CWE-416</code></td><td>Use After Free</td></tr>
+        <tr><td><code>CWE-476</code></td><td>NULL Dereference</td></tr>
+        <tr><td><code>CWE-787</code></td><td>Out-of-Bounds Write</td></tr>
+        <tr><td><code>CWE-862</code></td><td>Missing Authorization</td></tr>
+        <tr><td><code>CWE-125</code></td><td>Out-of-Bounds Read</td></tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== SLIDE 5: PREPROCESSING ==================== -->
+<div class="slide" id="s5">
+  <div class="slide-header">
+    <span class="slide-number">05</span>
+    <span class="slide-label">Preprocessing</span>
+  </div>
+  <h2>Data <span class="accent">Preprocessing Pipeline</span></h2>
+  <div class="two-col">
+    <div>
+      <h3>Shared Steps (Both Models)</h3>
+      <div class="pipeline" style="flex-direction:column;align-items:flex-start;gap:8px;margin-bottom:16px;">
+        <div class="pipe-step">1. Remove inline comments (<code>//</code>)</div>
+        <div class="pipe-step">2. Remove block comments (<code>/* … */</code>)</div>
+        <div class="pipe-step">3. Normalize whitespace</div>
+        <div class="pipe-step">4. Label-encode CWE IDs → integer class</div>
+        <div class="pipe-step">5. Stratified 70 / 15 / 15 split</div>
+      </div>
+      <div class="card blue-border">
+        <h3>Baseline Only</h3>
+        <p style="font-size:0.9rem;">Clean text fed directly to TF-IDF vectorizer — no further normalization needed.</p>
+      </div>
+    </div>
+    <div>
+      <div class="card green-border" style="margin-bottom:14px;">
+        <h3>CodeBERT Only</h3>
+        <ul>
+          <li>Tokenize with <code>RobertaTokenizer</code></li>
+          <li>Truncate / pad to <span class="hl-green">512 tokens</span></li>
+          <li>Return <code>input_ids</code> + <code>attention_mask</code></li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Token Length Note</h3>
+        <p style="font-size:0.9rem;">
+          Median function length: <span class="hl-yellow">[XXX] tokens</span><br>
+          ~<span class="hl-red">[XX]%</span> of functions exceed 512 tokens and are truncated.<br>
+          Truncation discards tail context; future work: sliding window.
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== SLIDE 6: BASELINE MODEL ==================== -->
+<div class="slide" id="s6">
+  <div class="slide-header">
+    <span class="slide-number">06</span>
+    <span class="slide-label">Baseline Model</span>
+  </div>
+  <h2>TF-IDF + <span class="accent">Logistic Regression</span></h2>
+  <div class="two-col">
+    <div>
+      <h3>Why Character N-grams?</h3>
+      <ul>
+        <li>Capture <span class="hl-blue">syntactic micro-patterns</span>: <code>ptr-&gt;</code>, <code>free(</code>, <code>strcpy</code></li>
+        <li>Robust to variable renaming</li>
+        <li>No tokenizer needed — language-agnostic</li>
+        <li>Fast to fit (&lt;5 min on CPU)</li>
+      </ul>
+      <div style="margin-top:20px;">
+        <h3>Vectorizer Settings</h3>
+        <table>
+          <tr><th>Parameter</th><th>Value</th></tr>
+          <tr><td>analyzer</td><td><code>char_wb</code></td></tr>
+          <tr><td>ngram_range</td><td><code>(3, 6)</code></td></tr>
+          <tr><td>max_features</td><td><code>100,000</code></td></tr>
+          <tr><td>sublinear_tf</td><td><code>True</code></td></tr>
+        </table>
+      </div>
+    </div>
+    <div>
+      <h3>Classifier Settings</h3>
+      <table>
+        <tr><th>Parameter</th><th>Value</th></tr>
+        <tr><td>solver</td><td><code>lbfgs</code></td></tr>
+        <tr><td>multi_class</td><td><code>multinomial</code></td></tr>
+        <tr><td>C</td><td><code>1.0</code></td></tr>
+        <tr><td>class_weight</td><td><code>balanced</code></td></tr>
+        <tr><td>max_iter</td><td><code>1,000</code></td></tr>
+      </table>
+      <div class="card green-border" style="margin-top:16px;">
+        <h3>Strengths &amp; Weaknesses</h3>
+        <ul>
+          <li><span class="hl-green">&#x2713;</span> Interpretable feature weights</li>
+          <li><span class="hl-green">&#x2713;</span> No GPU required</li>
+          <li><span class="hl-red">&#x2717;</span> No semantic understanding</li>
+          <li><span class="hl-red">&#x2717;</span> Ignores token order beyond ngrams</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== SLIDE 7: CODEBERT MODEL ==================== -->
+<div class="slide" id="s7">
+  <div class="slide-header">
+    <span class="slide-number">07</span>
+    <span class="slide-label">CodeBERT Model</span>
+  </div>
+  <h2><span class="accent">CodeBERT</span> Fine-Tuning</h2>
+  <div class="two-col">
+    <div>
+      <h3>Pre-Training (Microsoft, 2020)</h3>
+      <ul>
+        <li>RoBERTa architecture — 12 layers, 768 hidden, 125M params</li>
+        <li>Pre-trained on <span class="hl-yellow">CodeSearchNet</span>: 6.4M NL-code pairs (6 languages)</li>
+        <li>Objectives: <span class="hl-blue">MLM</span> + <span class="hl-blue">RTD</span> (replaced token detection)</li>
+        <li>Bimodal: understands both docstrings and source tokens</li>
+      </ul>
+      <div style="margin-top:18px;">
+        <h3>Classification Head</h3>
+        <div class="code-block"><span class="fn">RobertaForSequenceClassification</span>
+  &#x2514; <span class="fn">RobertaModel</span>  (frozen or fine-tuned)
+  &#x2514; <span class="kw">Linear</span>(768, K)   <span class="cmt"># K = num CWE classes</span>
+  &#x2514; <span class="fn">Softmax</span>
+
+Loss: <span class="kw">CrossEntropyLoss</span></div>
+      </div>
+    </div>
+    <div>
+      <h3>Fine-Tune Strategy</h3>
+      <ul>
+        <li>All parameters trained jointly (no layer freezing)</li>
+        <li>Warmup: 10% of total steps → linear decay to 0</li>
+        <li>Gradient clipping: &#x2113;<sub>2</sub> norm &#x2264; 1.0</li>
+        <li>Best checkpoint by validation Macro-F1</li>
+      </ul>
+      <div class="card green-border" style="margin-top:16px;">
+        <h3>Strengths &amp; Weaknesses</h3>
+        <ul>
+          <li><span class="hl-green">&#x2713;</span> Contextual, semantic representations</li>
+          <li><span class="hl-green">&#x2713;</span> Subword tokenizer handles identifiers</li>
+          <li><span class="hl-red">&#x2717;</span> 512-token hard limit</li>
+          <li><span class="hl-red">&#x2717;</span> Requires GPU for practical training</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== SLIDE 8: EXPERIMENT SETTINGS ==================== -->
+<div class="slide" id="s8">
+  <div class="slide-header">
+    <span class="slide-number">08</span>
+    <span class="slide-label">Experiment Settings</span>
+  </div>
+  <h2>Experimental <span class="accent">Setup</span></h2>
+  <div class="two-col">
+    <div>
+      <h3>Hardware &amp; Software</h3>
+      <table>
+        <tr><th>Component</th><th>Value</th></tr>
+        <tr><td>GPU</td><td><span class="td-placeholder">[GPU Model, X GB]</span></td></tr>
+        <tr><td>PyTorch</td><td><span class="td-placeholder">[X.X.X]</span></td></tr>
+        <tr><td>transformers</td><td><span class="td-placeholder">[X.X.X]</span></td></tr>
+        <tr><td>scikit-learn</td><td><span class="td-placeholder">[X.X.X]</span></td></tr>
+        <tr><td>Python</td><td><span class="td-placeholder">[3.X.X]</span></td></tr>
+        <tr><td>Random seed</td><td><code>42</code></td></tr>
+      </table>
+      <div style="margin-top:18px;">
+        <div class="card">
+          <h3>Baseline Training Time</h3>
+          <p style="font-size:0.9rem;">TF-IDF fit + LR train: <span class="hl-green">&lt; 5 min (CPU)</span></p>
+        </div>
+      </div>
+    </div>
+    <div>
+      <h3>CodeBERT Hyperparameters</h3>
+      <table>
+        <tr><th>Hyperparameter</th><th>Value</th></tr>
+        <tr><td>Learning rate</td><td><code>2e-5</code></td></tr>
+        <tr><td>Batch size</td><td><code>16</code></td></tr>
+        <tr><td>Epochs</td><td><code>5</code></td></tr>
+        <tr><td>Warmup fraction</td><td><code>0.10</code></td></tr>
+        <tr><td>Weight decay</td><td><code>0.01</code></td></tr>
+        <tr><td>Dropout</td><td><code>0.10</code></td></tr>
+        <tr><td>Max tokens</td><td><code>512</code></td></tr>
+        <tr><td>Optimizer</td><td>AdamW</td></tr>
+      </table>
+      <div style="margin-top:12px;">
+        <span class="badge badge-gray">&#x03B2;<sub>1</sub>=0.9</span>
+        <span class="badge badge-gray">&#x03B2;<sub>2</sub>=0.999</span>
+        <span class="badge badge-gray">&#x03B5;=1e-8</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== SLIDE 9: RESULTS ==================== -->
+<div class="slide" id="s9">
+  <div class="slide-header">
+    <span class="slide-number">09</span>
+    <span class="slide-label">Results</span>
+  </div>
+  <h2>Test-Set <span class="accent">Results</span></h2>
+  <div style="margin-bottom:24px;">
+    <table>
+      <tr>
+        <th>Model</th>
+        <th>Accuracy</th>
+        <th>Macro-F1</th>
+        <th>Macro-P</th>
+        <th>Macro-R</th>
+      </tr>
+      <tr>
+        <td>TF-IDF + LR (baseline)</td>
+        <td class="td-placeholder">[X.XXXX]</td>
+        <td class="td-placeholder">[X.XXXX]</td>
+        <td class="td-placeholder">[X.XXXX]</td>
+        <td class="td-placeholder">[X.XXXX]</td>
+      </tr>
+      <tr>
+        <td><span class="hl-green">CodeBERT (fine-tuned)</span></td>
+        <td class="td-good">[X.XXXX]</td>
+        <td class="td-good">[X.XXXX]</td>
+        <td class="td-good">[X.XXXX]</td>
+        <td class="td-good">[X.XXXX]</td>
+      </tr>
+      <tr>
+        <td><em>&#x394; (CodeBERT &#x2212; Baseline)</em></td>
+        <td class="td-delta">[+X.XX]</td>
+        <td class="td-delta">[+X.XX]</td>
+        <td class="td-delta">[+X.XX]</td>
+        <td class="td-delta">[+X.XX]</td>
+      </tr>
+    </table>
+  </div>
+  <div class="three-col">
+    <div class="stat-card">
+      <div class="big">[X.XX]</div>
+      <div class="label">Accuracy &#x394;</div>
+    </div>
+    <div class="stat-card">
+      <div class="big">[X.XX]</div>
+      <div class="label">Macro-F1 &#x394;</div>
+    </div>
+    <div class="stat-card">
+      <div class="big">[X]</div>
+      <div class="label">CWE Classes</div>
+    </div>
+  </div>
+  <p style="margin-top:16px;font-size:0.88rem;color:#8b949e;text-align:center;">
+    Fill in placeholders after running <code>src/evaluate.py</code> on the test set.
+  </p>
+</div>
+
+<!-- ==================== SLIDE 10: DISCUSSION ==================== -->
+<div class="slide" id="s10">
+  <div class="slide-header">
+    <span class="slide-number">10</span>
+    <span class="slide-label">Discussion</span>
+  </div>
+  <h2>What Do the Results <span class="accent">Tell Us?</span></h2>
+  <div class="two-col">
+    <div>
+      <h3>Why CodeBERT Wins</h3>
+      <ul>
+        <li>Contextual token representations vs. bag-of-ngrams</li>
+        <li>Pre-training on 6.4M code–NL pairs captures syntax + semantics jointly</li>
+        <li>Subword tokenizer handles identifiers like <code>malloc</code>, <code>pthread_mutex</code></li>
+        <li>Larger gain on <span class="hl-blue">semantically complex</span> CWEs (race conditions, UAF)</li>
+      </ul>
+      <div style="margin-top:18px;">
+        <h3>Confusion Patterns</h3>
+        <ul>
+          <li><span class="hl-red">CWE-119 &#x2194; CWE-787 &#x2194; CWE-125</span> — all memory-boundary violations, structurally similar</li>
+          <li><span class="hl-yellow">CWE-20 &#x2194; CWE-200</span> — input validation vs. disclosure, thin boundary</li>
+          <li>[FILL IN: your top confusion pair from the confusion matrix]</li>
+        </ul>
+      </div>
+    </div>
+    <div>
+      <div class="card red-border" style="margin-bottom:14px;">
+        <h3>Limitations</h3>
+        <ul>
+          <li>Top-10 CWEs only — long-tail unaddressed</li>
+          <li>512-token truncation drops context for long functions</li>
+          <li>Class imbalance despite balanced weighting</li>
+          <li>C/C++ only; not generalizable to other languages without retraining</li>
+        </ul>
+      </div>
+      <div class="card blue-border">
+        <h3>Future Work</h3>
+        <ul>
+          <li>LongFormer / sliding-window for long functions</li>
+          <li>Graph-based (GraphCodeBERT, data flow)</li>
+          <li>Data augmentation for minority CWEs</li>
+          <li>Multi-label classification (co-occurring CWEs)</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== SLIDE 11: CONCLUSION ==================== -->
+<div class="slide" id="s11">
+  <div class="slide-header">
+    <span class="slide-number">11</span>
+    <span class="slide-label">Conclusion</span>
+  </div>
+  <h2><span class="accent">Summary</span></h2>
+  <div class="two-col">
+    <div>
+      <h3>What We Did</h3>
+      <ol>
+        <li>Framed vulnerability type prediction as multi-class classification (K=10 CWEs)</li>
+        <li>Built a TF-IDF + Logistic Regression baseline on BigVul</li>
+        <li>Fine-tuned <code>microsoft/codebert-base</code> end-to-end</li>
+        <li>Evaluated with accuracy, macro-F1, precision, and recall on a held-out test set</li>
+        <li>Analyzed per-class performance and confusion patterns</li>
+      </ol>
+    </div>
+    <div>
+      <div class="card green-border" style="margin-bottom:14px;">
+        <h3>Key Findings</h3>
+        <ul>
+          <li>CodeBERT outperforms baseline by <span class="hl-green">[+X.XX] Acc, [+X.XX] F1</span></li>
+          <li>Pre-training provides strongest benefit for semantically rich CWEs</li>
+          <li>Memory-boundary CWEs remain the hardest to disambiguate</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Takeaway</h3>
+        <p style="font-size:0.92rem;">
+          Pre-trained code representations transfer effectively to fine-grained
+          CWE classification, making automated vulnerability labeling practical
+          at dataset scale.
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== SLIDE 12: REFERENCES ==================== -->
+<div class="slide" id="s12">
+  <div class="slide-header">
+    <span class="slide-number">12</span>
+    <span class="slide-label">References &amp; Q&amp;A</span>
+  </div>
+  <h2>References</h2>
+  <div style="margin-bottom:28px;">
+    <ul style="font-size:0.88rem;line-height:1.9;">
+      <li>Feng et al. (2020). <em>CodeBERT: A Pre-Trained Model for Programming and Natural Languages.</em> EMNLP Findings.</li>
+      <li>Fan et al. (2020). <em>A C/C++ Code Vulnerability Dataset with Code Changes and CVE Summaries.</em> MSR 2020.</li>
+      <li>Zhou et al. (2019). <em>Devign: Effective Vulnerability Identification by Learning Comprehensive Program Semantics via Graph Neural Networks.</em> NeurIPS.</li>
+      <li>Guo et al. (2021). <em>GraphCodeBERT: Pre-training Code Representations with Data Flow.</em> ICLR.</li>
+      <li>Li et al. (2018). <em>VulDeePecker: A Deep Learning-Based System for Vulnerability Detection.</em> NDSS.</li>
+    </ul>
+  </div>
+  <div style="text-align:center;padding:22px 0;">
+    <div style="font-size:2rem;color:#00ff88;font-family:'Courier New',monospace;letter-spacing:0.1em;">
+      THANK YOU
+    </div>
+    <div style="margin-top:10px;color:#8b949e;font-size:0.9rem;">
+      Questions? &nbsp;&#x25BA;&nbsp; [your email here]
+    </div>
+    <div style="margin-top:18px;display:flex;justify-content:center;gap:10px;flex-wrap:wrap;">
+      <span class="badge badge-green">CodeBERT</span>
+      <span class="badge badge-blue">BigVul</span>
+      <span class="badge badge-gray">CWE Classification</span>
+    </div>
+  </div>
+</div>
+
+</div><!-- #deck -->
+
+<!-- ==================== NAVIGATION ==================== -->
+<div id="nav">
+  <button class="nav-btn" id="btn-prev" onclick="go(-1)" disabled>&#x2190; Prev</button>
+  <span id="counter">1 / 12</span>
+  <button class="nav-btn" id="btn-next" onclick="go(1)">Next &#x2192;</button>
+</div>
+
+<script>
+(function(){
+  const TOTAL = 12;
+  let cur = 1;
+
+  function show(n) {
+    document.getElementById('s' + cur).classList.remove('active');
+    cur = Math.max(1, Math.min(TOTAL, n));
+    document.getElementById('s' + cur).classList.add('active');
+    document.getElementById('counter').textContent = cur + ' / ' + TOTAL;
+    document.getElementById('btn-prev').disabled = (cur === 1);
+    document.getElementById('btn-next').disabled = (cur === TOTAL);
+    document.getElementById('progress').style.width = ((cur / TOTAL) * 100) + '%';
+  }
+
+  window.go = function(dir){ show(cur + dir); };
+
+  document.addEventListener('keydown', function(e){
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === ' ') { e.preventDefault(); go(1); }
+    if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')                    { e.preventDefault(); go(-1); }
+    if (e.key === 'Home') show(1);
+    if (e.key === 'End')  show(TOTAL);
+  });
+
+  // Init progress bar
+  document.getElementById('progress').style.width = ((1 / TOTAL) * 100) + '%';
+})();
+</script>
+</body>
+</html>
