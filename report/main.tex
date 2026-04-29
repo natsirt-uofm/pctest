@@ -1,0 +1,365 @@
+% ============================================================
+%  Vulnerability Type Classification with CodeBERT
+%  ACL 2023 Format — compile with:
+%    pdflatex main.tex && bibtex main && pdflatex main.tex x2
+%
+%  Style files: download acl.sty and acl_natbib.sty from
+%  https://github.com/acl-org/acl-style-files
+% ============================================================
+\documentclass[11pt]{article}
+\usepackage[]{acl}           % ACL 2023 style (place acl.sty in report/)
+\usepackage{times}
+\usepackage{latexsym}
+\usepackage{microtype}
+\usepackage{inconsolata}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{xcolor}
+\usepackage{listings}
+
+% Code listing style
+\lstset{
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  frame=single,
+  backgroundcolor=\color{gray!8},
+  keywordstyle=\color{blue!70},
+  commentstyle=\color{green!50!black},
+  stringstyle=\color{red!60},
+}
+
+\title{Vulnerability Type Classification in Source Code:\\
+       A Comparative Study of TF-IDF Baselines and Fine-Tuned CodeBERT}
+
+\author{
+  \textbf{[Author Name(s)]} \\
+  [Institution / Course Name] \\
+  \texttt{[email@example.edu]}
+}
+
+\date{}
+
+\begin{document}
+\maketitle
+
+% ============================================================
+\begin{abstract}
+Automated classification of source code vulnerabilities by weakness type
+(CWE category) is a critical step toward scalable static analysis and
+developer tooling. In this work we compare a traditional TF-IDF +
+Logistic Regression baseline against a fine-tuned
+\textsc{CodeBERT}~\citep{feng-etal-2020-codebert} model on the
+BigVul dataset~\citep{fan2020ac}, which contains over 3,000 C/C++
+vulnerability-fixing commits labeled with CWE identifiers. Our
+CodeBERT model achieves an accuracy of \textbf{[X.XXXX]} and a
+macro-averaged F1 score of \textbf{[X.XXXX]}, outperforming the
+baseline by [X.XX] and [X.XX] points respectively. We further analyze
+per-class performance and identify the confusion patterns most common
+among structurally similar CWE categories.
+\end{abstract}
+
+% ============================================================
+\section{Introduction}
+\label{sec:intro}
+
+Software vulnerabilities cost the global economy billions of dollars
+annually~\citep{anderson2020economics}. The National Vulnerability
+Database (NVD) catalogues thousands of new Common Vulnerabilities and
+Exposures (CVEs) each year, each associated with one or more Common
+Weakness Enumeration (CWE) identifiers that describe the \emph{type}
+of weakness—buffer overflow, use-after-free, SQL injection, and so on.
+Automatically assigning CWE labels to vulnerable code enables
+developers to receive targeted remediation guidance and helps
+prioritizers triage security debt at scale.
+
+Classifying code by vulnerability type is harder than sentiment
+analysis or topic modeling for several reasons: (1) the relevant
+signal is often localized to a few lines within a function of
+hundreds of lines; (2) different vulnerability types can produce
+syntactically similar constructs; and (3) training data is scarce
+relative to the diversity of CWE categories.
+
+Transformer models pre-trained on source code—most notably
+\textsc{CodeBERT}~\citep{feng-etal-2020-codebert}—have demonstrated
+strong transfer learning capabilities on downstream code-understanding
+tasks such as clone detection, defect detection, and code search.
+We hypothesize that these models can similarly benefit vulnerability
+type classification. To test this hypothesis we formulate the problem
+as a multi-class text classification task and conduct the following
+study:
+
+\begin{enumerate}
+  \item Train a TF-IDF character n-gram + Logistic Regression baseline.
+  \item Fine-tune \textsc{CodeBERT} on the same labeled splits.
+  \item Evaluate both models with accuracy, macro-F1, precision, and
+        recall on a held-out test set.
+  \item Perform per-class and error analysis to understand failure
+        modes.
+\end{enumerate}
+
+The remainder of this paper is structured as follows.
+Section~\ref{sec:related} reviews related work.
+Section~\ref{sec:data} describes the dataset.
+Section~\ref{sec:method} describes the models.
+Section~\ref{sec:experiments} details experimental settings.
+Section~\ref{sec:results} presents results.
+Section~\ref{sec:discussion} discusses findings.
+Section~\ref{sec:conclusion} concludes.
+
+% ============================================================
+\section{Related Work}
+\label{sec:related}
+
+\paragraph{Vulnerability Detection.}
+Early work on automated vulnerability detection relied on hand-crafted
+features and pattern matching~\citep{chess2004static}. Deep learning
+approaches using bidirectional LSTMs and graph neural networks on
+code property graphs achieved notable performance on binary
+(vulnerable / not-vulnerable) detection~\citep{li2018vuldeepecker,
+zhou2019devign}. Our task is harder: we require \emph{multi-class}
+CWE labeling, not just binary detection.
+
+\paragraph{Pre-trained Models for Code.}
+\textsc{CodeBERT}~\citep{feng-etal-2020-codebert} is a bimodal model
+pre-trained on natural language–code pairs from GitHub using masked
+language modeling (MLM) and replaced token detection (RTD) objectives.
+It achieves state-of-the-art results on code search, code summarization,
+and defect detection. \textsc{GraphCodeBERT}~\citep{guo2021graphcodebert}
+extends this with data flow graphs, while \textsc{UniXcoder}~\citep{guo2022unixcoder}
+unifies encoder and decoder pre-training. We choose \textsc{CodeBERT}
+as it balances capability with training efficiency.
+
+\paragraph{CWE Classification.}
+\citet{aota2021automation} used TF-IDF and SVMs on CVE descriptions
+(natural language) rather than source code. \citet{ni2022just}
+applied CodeBERT to a binary defect detection task but did not perform
+fine-grained CWE type classification. To our knowledge, this work is
+among the first to directly fine-tune \textsc{CodeBERT} for multi-class
+CWE labeling on raw function-level source code.
+
+% ============================================================
+\section{Dataset}
+\label{sec:data}
+
+\subsection{BigVul}
+
+We use the BigVul dataset~\citep{fan2020ac}, a collection of
+186,878 C/C++ functions extracted from [X,XXX] vulnerability-fixing
+commits across [XXX] open-source projects. Each function is paired
+with a CVE identifier and—for vulnerable functions—one or more CWE
+labels. We retain only the top-10 most frequent CWE categories to
+avoid extreme class imbalance, yielding [X,XXX] labeled samples.
+
+\subsection{Preprocessing and Splits}
+
+We apply minimal preprocessing: inline and block comments are removed,
+and whitespace is normalized. We perform a stratified 70 / 15 / 15
+train / validation / test split, ensuring each CWE class is
+proportionally represented in every partition.
+
+Table~\ref{tab:data} summarizes the final dataset statistics.
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lrr}
+\toprule
+\textbf{Split} & \textbf{Samples} & \textbf{Classes} \\
+\midrule
+Train      & [X,XXX] & 10 \\
+Validation & [X,XXX] & 10 \\
+Test       & [X,XXX] & 10 \\
+\midrule
+Total      & [X,XXX] & 10 \\
+\bottomrule
+\end{tabular}
+\caption{Dataset splits after filtering to top-10 CWE categories.}
+\label{tab:data}
+\end{table}
+
+\subsection{Class Distribution}
+[FILL IN: describe the most frequent CWEs in your filtered set, e.g.,
+CWE-119 (Buffer Errors), CWE-20 (Input Validation), CWE-200
+(Information Exposure). Note any imbalance and whether you applied
+class weighting.]
+
+% ============================================================
+\section{Methodology}
+\label{sec:method}
+
+\subsection{Baseline: TF-IDF + Logistic Regression}
+
+Our baseline uses a \textbf{character-level TF-IDF} vectorizer
+($n$-grams of length 3–6) with 100,000 features combined with
+\textbf{Logistic Regression} (multi-class ``multinomial'',
+$C{=}1.0$, balanced class weights, L-BFGS solver, 1,000 iterations).
+Character n-grams capture syntactic patterns in source code such as
+operator sequences and identifier suffixes without requiring
+tokenization.
+
+\subsection{CodeBERT Fine-Tuning}
+
+We add a linear classification head over the \texttt{[CLS]} token
+representation of \texttt{microsoft/codebert-base} (125M parameters,
+12 transformer layers, hidden size 768):
+
+\begin{equation}
+  \hat{y} = \text{softmax}(W \cdot h_{\texttt{[CLS]}} + b),
+  \quad W \in \mathbb{R}^{K \times 768}
+\end{equation}
+
+where $K$ is the number of CWE classes. We fine-tune all parameters
+jointly using cross-entropy loss. Input functions are tokenized with
+the \texttt{RobertaTokenizer} and truncated / padded to 512 tokens.
+
+% ============================================================
+\section{Experiments}
+\label{sec:experiments}
+
+\subsection{Implementation Details}
+
+All experiments are run on a single NVIDIA [GPU MODEL] GPU with
+[X]GB of VRAM. PyTorch [VERSION] and Hugging Face \texttt{transformers}
+[VERSION] are used throughout.
+
+\paragraph{Baseline.} The scikit-learn pipeline fits in under 5 minutes
+on CPU.
+
+\paragraph{CodeBERT.}
+\begin{itemize}
+  \item Optimizer: AdamW ($\beta_1{=}0.9$, $\beta_2{=}0.999$,
+        $\epsilon{=}10^{-8}$)
+  \item Learning rate: $2 \times 10^{-5}$ with linear warmup over
+        10\% of total steps, then linear decay to 0
+  \item Weight decay: $0.01$
+  \item Batch size: 16
+  \item Epochs: 5
+  \item Gradient clipping: $\ell_2$ norm $\leq 1.0$
+  \item Dropout: 0.1 (hidden and attention)
+  \item Best checkpoint selected by macro-F1 on validation set
+\end{itemize}
+
+\subsection{Evaluation Metrics}
+
+We report \textbf{accuracy}, \textbf{macro-averaged F1}, macro-averaged
+\textbf{precision}, and macro-averaged \textbf{recall}. Macro averaging
+weights all classes equally, which is appropriate given the class
+imbalance in our filtered dataset.
+
+% ============================================================
+\section{Results}
+\label{sec:results}
+
+\subsection{Main Results}
+
+Table~\ref{tab:results} compares the baseline and CodeBERT on the
+held-out test set.
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Model} & \textbf{Acc} & \textbf{F1} & \textbf{P} & \textbf{R} \\
+\midrule
+TF-IDF + LR  & [X.XXXX] & [X.XXXX] & [X.XXXX] & [X.XXXX] \\
+CodeBERT     & [X.XXXX] & [X.XXXX] & [X.XXXX] & [X.XXXX] \\
+\midrule
+$\Delta$     & [+X.XX]  & [+X.XX]  & [+X.XX]  & [+X.XX]  \\
+\bottomrule
+\end{tabular}
+\caption{Test-set performance. $\Delta$ = CodeBERT $-$ Baseline.
+         All metrics are macro-averaged; higher is better.}
+\label{tab:results}
+\end{table}
+
+\subsection{Per-Class Results}
+
+Table~\ref{tab:perclass} shows per-class F1 for both models on the
+test set.
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lcc}
+\toprule
+\textbf{CWE} & \textbf{Baseline F1} & \textbf{CodeBERT F1} \\
+\midrule
+CWE-119 (Buffer Errors)      & [X.XXXX] & [X.XXXX] \\
+CWE-20  (Input Validation)   & [X.XXXX] & [X.XXXX] \\
+CWE-200 (Info Exposure)      & [X.XXXX] & [X.XXXX] \\
+CWE-264 (Permissions)        & [X.XXXX] & [X.XXXX] \\
+CWE-362 (Race Condition)     & [X.XXXX] & [X.XXXX] \\
+CWE-416 (Use After Free)     & [X.XXXX] & [X.XXXX] \\
+CWE-476 (NULL Deref)         & [X.XXXX] & [X.XXXX] \\
+CWE-787 (Out-of-Bounds Write)& [X.XXXX] & [X.XXXX] \\
+CWE-862 (Missing Auth.)      & [X.XXXX] & [X.XXXX] \\
+CWE-125 (Out-of-Bounds Read) & [X.XXXX] & [X.XXXX] \\
+\midrule
+\textbf{Macro Avg}           & [X.XXXX] & [X.XXXX] \\
+\bottomrule
+\end{tabular}
+\caption{Per-class F1 scores on the test set.
+         [FILL IN with your actual CWE classes.]}
+\label{tab:perclass}
+\end{table}
+
+% ============================================================
+\section{Discussion}
+\label{sec:discussion}
+
+\subsection{Effect of Pre-Training}
+[FILL IN: Discuss why CodeBERT outperforms the baseline. Reference
+the contextualized token representations vs. bag-of-ngrams. Discuss
+whether the improvement is larger for syntactically complex CWEs
+(e.g., race conditions) vs. those with distinctive keywords
+(e.g., CWE-89 SQL injection).]
+
+\subsection{Confusion Patterns}
+[FILL IN: Based on your confusion matrix, identify the most common
+misclassification pairs. A common pattern is confusion between
+CWE-119 and CWE-787 / CWE-125 because all involve memory boundary
+violations. Discuss what features would be needed to separate them.]
+
+\subsection{Qualitative Error Analysis}
+[FILL IN: Describe 2–3 specific misclassified examples. What does
+the model predict and why might it be confused? Are the functions
+very short, multi-labeled in the original dataset, or domain-specific?]
+
+\subsection{Limitations}
+This study has several limitations. First, we restrict to top-10
+CWE classes; the tail of the distribution remains unaddressed.
+Second, truncating functions to 512 tokens discards context for
+longer functions. Third, class imbalance, though partially addressed
+via balanced weighting, still influences minority-class performance.
+Future work could explore \textsc{LongFormer}-style models, graph-based
+representations, or data augmentation strategies.
+
+% ============================================================
+\section{Conclusion}
+\label{sec:conclusion}
+
+We presented a systematic comparison of a TF-IDF baseline and a
+fine-tuned \textsc{CodeBERT} model for multi-class CWE vulnerability
+type classification. Our CodeBERT model achieves [X.XXXX] accuracy
+and [X.XXXX] macro-F1 on the BigVul dataset, surpassing the baseline
+by [X.XX] and [X.XX] points respectively. These results confirm that
+pre-trained code representations transfer effectively to fine-grained
+vulnerability categorization. Error analysis reveals that the most
+challenging cases involve structurally similar memory-safety CWEs,
+suggesting that incorporating data flow or control flow information
+could further improve performance.
+
+% ============================================================
+\section*{Acknowledgements}
+[FILL IN or remove this section.]
+
+% ============================================================
+\bibliography{references}
+
+\end{document}
