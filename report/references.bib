@@ -1,5 +1,5 @@
 % ============================================================
-%  references.bib — BibTeX for Vulnerability Classification report
+%  references.bib — BibTeX for Malware Family Classification report
 %  Compile: bibtex main  (after first pdflatex run)
 % ============================================================
 
@@ -17,109 +17,7 @@
   url       = {https://aclanthology.org/2020.findings-emnlp.139},
 }
 
-% ----- Dataset: BigVul -----
-@inproceedings{fan2020ac,
-  title     = {A C/C++ Code Vulnerability Dataset with Code Changes and CVE Summaries},
-  author    = {Fan, Jiahao and Li, Yi and Wang, Shaohua and Nguyen, Tien N.},
-  booktitle = {Proceedings of the 17th International Conference on Mining Software Repositories (MSR)},
-  year      = {2020},
-  pages     = {508--512},
-  publisher = {ACM},
-  address   = {Seoul, Republic of Korea},
-  doi       = {10.1145/3379597.3387501},
-}
-
-% ----- Dataset: Devign -----
-@inproceedings{zhou2019devign,
-  title     = {Devign: Effective Vulnerability Identification by Learning Comprehensive Program Semantics via Graph Neural Networks},
-  author    = {Zhou, Yaqin and Liu, Shangqing and Siow, Jing Kai and Du, Xiaoning and Liu, Yang},
-  booktitle = {Advances in Neural Information Processing Systems (NeurIPS)},
-  volume    = {32},
-  year      = {2019},
-  publisher = {Curran Associates, Inc.},
-}
-
-% ----- Pre-trained code model: GraphCodeBERT -----
-@inproceedings{guo2021graphcodebert,
-  title     = {{GraphCodeBERT}: Pre-training Code Representations with Data Flow},
-  author    = {Guo, Daya and Ren, Shuo and Lu, Shuai and Feng, Zhangyin and Tang, Duyu and
-               Liu, Shujie and Zhou, Long and Duan, Nan and Svyatkovskiy, Alexey and Fu, Shengyu and
-               Tufano, Michele and Deng, Shao Kun and Clement, Colin B. and Drain, Dawn and
-               Sundaresan, Neel and Yin, Jian and Jiang, Daxin and Zhou, Ming},
-  booktitle = {International Conference on Learning Representations (ICLR)},
-  year      = {2021},
-  url       = {https://openreview.net/forum?id=jMTgUjmtTzU},
-}
-
-% ----- Pre-trained code model: UniXcoder -----
-@inproceedings{guo2022unixcoder,
-  title     = {{UniXcoder}: Unified Cross-Modal Pre-Training for Code Representation},
-  author    = {Guo, Daya and Lu, Shuai and Duan, Nan and Wang, Yanlin and Zhou, Ming and Yin, Jian},
-  booktitle = {Proceedings of the 60th Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers)},
-  year      = {2022},
-  pages     = {7212--7225},
-  publisher = {Association for Computational Linguistics},
-  address   = {Dublin, Ireland},
-  url       = {https://aclanthology.org/2022.acl-long.499},
-}
-
-% ----- Static analysis / rule-based -----
-@book{chess2004static,
-  title     = {Secure Programming with Static Analysis},
-  author    = {Chess, Brian and West, Jacob},
-  year      = {2007},
-  publisher = {Addison-Wesley Professional},
-  address   = {Upper Saddle River, NJ},
-}
-
-% ----- Deep learning for vulnerability: VulDeePecker -----
-@inproceedings{li2018vuldeepecker,
-  title     = {{VulDeePecker}: A Deep Learning-Based System for Vulnerability Detection},
-  author    = {Li, Zhen and Zou, Deqing and Xu, Shouhuai and Ou, Xinyu and Jin, Hai and
-               Wang, Sujuan and Deng, Zhijun and Zhong, Yuyi},
-  booktitle = {Network and Distributed System Security Symposium (NDSS)},
-  year      = {2018},
-  publisher = {Internet Society},
-}
-
-% ----- CVE text classification -----
-@inproceedings{aota2021automation,
-  title     = {Automation of Vulnerability Detection and Classification Using Machine Learning},
-  author    = {Aota, Hirotaka and Kamizono, Masanori},
-  booktitle = {Proceedings of the 2021 Symposium on Access Control Models and Technologies (SACMAT)},
-  year      = {2021},
-  pages     = {183--188},
-  publisher = {ACM},
-  doi       = {10.1145/3450569.3463574},
-}
-
-% ----- Binary defect detection with CodeBERT -----
-@article{ni2022just,
-  title     = {Just-In-Time Defect Prediction on JavaScript Projects: A Replication Study},
-  author    = {Ni, Chao and Guo, Xin and Zhan, Zheng and Li, Ying and Yang, Zheng},
-  journal   = {IEEE Transactions on Reliability},
-  volume    = {71},
-  number    = {1},
-  pages     = {51--67},
-  year      = {2022},
-  publisher = {IEEE},
-  doi       = {10.1109/TR.2021.3118738},
-}
-
-% ----- Economics of software security -----
-@article{anderson2020economics,
-  title     = {Security Economics},
-  author    = {Anderson, Ross},
-  journal   = {Communications of the ACM},
-  volume    = {63},
-  number    = {8},
-  pages     = {26--28},
-  year      = {2020},
-  publisher = {ACM},
-  doi       = {10.1145/3399683},
-}
-
-% ----- BERT (background) -----
+% ----- Background: BERT -----
 @inproceedings{devlin-etal-2019-bert,
   title     = {{BERT}: Pre-training of Deep Bidirectional Transformers for Language Understanding},
   author    = {Devlin, Jacob and Chang, Ming-Wei and Lee, Kenton and Toutanova, Kristina},
@@ -133,20 +31,22 @@
   url       = {https://aclanthology.org/N19-1423},
 }
 
-% ----- Transformers library -----
-@inproceedings{wolf-etal-2020-transformers,
-  title     = {Transformers: State-of-the-Art Natural Language Processing},
-  author    = {Wolf, Thomas and Debut, Lysandre and Sanh, Victor and Chaumond, Julien and
-               Delangue, Clement and Moi, Anthony and Cistac, Perric and Rault, Tim and
-               Louf, Remi and Funtowicz, Morgan and Davison, Joe and Shleifer, Sam and
-               von Platen, Patrick and Ma, Clara and Jernite, Yacine and Plu, Julien and
-               Xu, Canwen and Scao, Teven Le and Gugger, Sylvain and Drame, Mariama and
-               Lhoest, Quentin and Rush, Alexander M.},
-  booktitle = {Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing:
-               System Demonstrations},
-  year      = {2020},
-  pages     = {38--45},
-  publisher = {Association for Computational Linguistics},
-  address   = {Online},
-  url       = {https://aclanthology.org/2020.emnlp-demos.6},
+% ----- Dataset: BODMAS -----
+@inproceedings{yang2021bodmas,
+  title     = {{BODMAS}: An Open Dataset for Learning Based Temporal Analysis of {PE} Malware},
+  author    = {Yang, Limin and Ciptadi, Arridhana and Laziuk, Ihar and Ahmadi, Ali and Wang, Gang},
+  booktitle = {4th Deep Learning and Security Workshop (DLS), IEEE Security and Privacy Workshops (SPW)},
+  year      = {2021},
+  publisher = {IEEE},
+}
+
+% ----- Related Work: NLP for Malware API Sequences -----
+@inproceedings{tran2017nlp,
+  title     = {Malware Detection by Eating a Whole {EXE}},
+  author    = {Tran, Quan Trong and Sato, Hiroshi},
+  booktitle = {Proceedings of the 2017 IEEE International Conference on
+               Dependable, Autonomic and Secure Computing (IESC)},
+  year      = {2017},
+  publisher = {IEEE},
+  doi       = {10.1109/IESYS.2017.8233569},
 }
