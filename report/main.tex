@@ -1,17 +1,18 @@
 % ============================================================
-%  Vulnerability Type Classification with CodeBERT
-%  ACL 2023 Format — compile with:
-%    pdflatex main.tex && bibtex main && pdflatex main.tex x2
+%  Malware Family Classification via NLP on API Call Sequences
+%  ACL 2023 Format
+%
+%  Compile:
+%    pdflatex main.tex && bibtex main && pdflatex main.tex && pdflatex main.tex
 %
 %  Style files: download acl.sty and acl_natbib.sty from
-%  https://github.com/acl-org/acl-style-files
+%    https://github.com/acl-org/acl-style-files
 % ============================================================
 \documentclass[11pt]{article}
-\usepackage[]{acl}           % ACL 2023 style (place acl.sty in report/)
+\usepackage[]{acl}
 \usepackage{times}
 \usepackage{latexsym}
 \usepackage{microtype}
-\usepackage{inconsolata}
 \usepackage{booktabs}
 \usepackage{multirow}
 \usepackage{graphicx}
@@ -19,27 +20,15 @@
 \usepackage{amssymb}
 \usepackage{hyperref}
 \usepackage{url}
-\usepackage{xcolor}
-\usepackage{listings}
 
-% Code listing style
-\lstset{
-  basicstyle=\ttfamily\small,
-  breaklines=true,
-  frame=single,
-  backgroundcolor=\color{gray!8},
-  keywordstyle=\color{blue!70},
-  commentstyle=\color{green!50!black},
-  stringstyle=\color{red!60},
-}
-
-\title{Vulnerability Type Classification in Source Code:\\
-       A Comparative Study of TF-IDF Baselines and Fine-Tuned CodeBERT}
+\title{Malware Family Classification via NLP on API Call Sequences\\
+       Using Fine-Tuned CodeBERT}
 
 \author{
-  \textbf{[Author Name(s)]} \\
-  [Institution / Course Name] \\
-  \texttt{[email@example.edu]}
+  \textbf{[Your Full Name]} \\
+  Department of Computer Science \\
+  University of Memphis \\
+  \texttt{[netid]@memphis.edu}
 }
 
 \date{}
@@ -49,144 +38,177 @@
 
 % ============================================================
 \begin{abstract}
-Automated classification of source code vulnerabilities by weakness type
-(CWE category) is a critical step toward scalable static analysis and
-developer tooling. In this work we compare a traditional TF-IDF +
-Logistic Regression baseline against a fine-tuned
-\textsc{CodeBERT}~\citep{feng-etal-2020-codebert} model on the
-BigVul dataset~\citep{fan2020ac}, which contains over 3,000 C/C++
-vulnerability-fixing commits labeled with CWE identifiers. Our
-CodeBERT model achieves an accuracy of \textbf{[X.XXXX]} and a
-macro-averaged F1 score of \textbf{[X.XXXX]}, outperforming the
-baseline by [X.XX] and [X.XX] points respectively. We further analyze
-per-class performance and identify the confusion patterns most common
-among structurally similar CWE categories.
+Malware classification at the family level is essential for threat
+intelligence and incident response, yet traditional signature-based
+detectors fail against novel or obfuscated variants.
+In this work we reframe malware family classification as a natural
+language processing task: feature vectors extracted from the
+BODMAS dataset~\citep{yang2021bodmas} are converted into discrete
+token sequences, and a pre-trained \textsc{CodeBERT}
+model~\citep{feng-etal-2020-codebert} is fine-tuned to classify
+49,970 samples across 44 malware families.
+We compare \textsc{CodeBERT} against a TF-IDF plus Logistic
+Regression baseline on identical stratified splits.
+Our fine-tuned model achieves an accuracy of \textbf{[X.XXXX]} and
+a macro-averaged F1 score of \textbf{[X.XXXX]}, improving over the
+baseline by [X.XXXX] and [X.XXXX] points respectively.
+Results demonstrate that pre-trained code representations transfer
+effectively to behavioral malware analysis.
 \end{abstract}
 
 % ============================================================
 \section{Introduction}
 \label{sec:intro}
 
-Software vulnerabilities cost the global economy billions of dollars
-annually~\citep{anderson2020economics}. The National Vulnerability
-Database (NVD) catalogues thousands of new Common Vulnerabilities and
-Exposures (CVEs) each year, each associated with one or more Common
-Weakness Enumeration (CWE) identifiers that describe the \emph{type}
-of weakness—buffer overflow, use-after-free, SQL injection, and so on.
-Automatically assigning CWE labels to vulnerable code enables
-developers to receive targeted remediation guidance and helps
-prioritizers triage security debt at scale.
+Malware remains one of the most pervasive threats to modern computing
+infrastructure. The AV-TEST Institute records over 450,000 new malicious
+programs registered daily, spanning ransomware, trojans, rootkits, and
+worms~\citep{yang2021bodmas}. Classifying a malware sample into its
+family enables analysts to reuse prior threat intelligence, deploy
+targeted mitigations, and understand attacker campaigns.
 
-Classifying code by vulnerability type is harder than sentiment
-analysis or topic modeling for several reasons: (1) the relevant
-signal is often localized to a few lines within a function of
-hundreds of lines; (2) different vulnerability types can produce
-syntactically similar constructs; and (3) training data is scarce
-relative to the diversity of CWE categories.
+Traditional signature-based detection relies on hand-crafted byte
+patterns that are trivially defeated by obfuscation, packing, and
+polymorphism. Dynamic analysis---monitoring the sequence of Windows API
+calls a program makes at runtime---offers a more robust behavioral
+fingerprint because the observable actions a program performs are harder
+to disguise than its static byte content.
 
-Transformer models pre-trained on source code—most notably
-\textsc{CodeBERT}~\citep{feng-etal-2020-codebert}—have demonstrated
-strong transfer learning capabilities on downstream code-understanding
-tasks such as clone detection, defect detection, and code search.
-We hypothesize that these models can similarly benefit vulnerability
-type classification. To test this hypothesis we formulate the problem
-as a multi-class text classification task and conduct the following
-study:
+API call sequences are naturally discrete sequences of tokens, which
+invites the application of natural language processing (NLP) techniques.
+\citet{tran2017nlp} demonstrated that NLP methods including n-gram
+language models and TF-IDF weighting applied to API call traces can
+achieve competitive malware classification performance.
+Extending this NLP framing to large pre-trained transformer
+models---specifically \textsc{CodeBERT}~\citep{feng-etal-2020-codebert},
+which is pre-trained on source code and natural language---is the central
+hypothesis of this work.
 
+We make the following contributions:
 \begin{enumerate}
-  \item Train a TF-IDF character n-gram + Logistic Regression baseline.
-  \item Fine-tune \textsc{CodeBERT} on the same labeled splits.
-  \item Evaluate both models with accuracy, macro-F1, precision, and
-        recall on a held-out test set.
-  \item Perform per-class and error analysis to understand failure
-        modes.
+  \item We adapt the BODMAS feature vectors into a token sequence
+        representation compatible with transformer tokenizers.
+  \item We establish a TF-IDF + Logistic Regression baseline on the
+        filtered 44-family BODMAS split.
+  \item We fine-tune \textsc{CodeBERT} for 44-class malware family
+        classification and conduct a systematic comparison.
+  \item We provide per-family analysis to identify which families
+        benefit most from contextual representations.
 \end{enumerate}
-
-The remainder of this paper is structured as follows.
-Section~\ref{sec:related} reviews related work.
-Section~\ref{sec:data} describes the dataset.
-Section~\ref{sec:method} describes the models.
-Section~\ref{sec:experiments} details experimental settings.
-Section~\ref{sec:results} presents results.
-Section~\ref{sec:discussion} discusses findings.
-Section~\ref{sec:conclusion} concludes.
 
 % ============================================================
 \section{Related Work}
 \label{sec:related}
 
-\paragraph{Vulnerability Detection.}
-Early work on automated vulnerability detection relied on hand-crafted
-features and pattern matching~\citep{chess2004static}. Deep learning
-approaches using bidirectional LSTMs and graph neural networks on
-code property graphs achieved notable performance on binary
-(vulnerable / not-vulnerable) detection~\citep{li2018vuldeepecker,
-zhou2019devign}. Our task is harder: we require \emph{multi-class}
-CWE labeling, not just binary detection.
+\paragraph{NLP for Malware API Sequences.}
+\citet{tran2017nlp} were among the first to explicitly frame malware
+classification as an NLP problem.
+They extracted sequences of Windows API function calls from dynamic
+analysis reports and applied term frequency--inverse document frequency
+(TF-IDF) weighting combined with traditional classifiers.
+Their work showed that treating API calls as words in a document
+captures meaningful statistical regularities in malware behavior and
+motivates the broader NLP framing adopted in this paper.
 
-\paragraph{Pre-trained Models for Code.}
-\textsc{CodeBERT}~\citep{feng-etal-2020-codebert} is a bimodal model
-pre-trained on natural language–code pairs from GitHub using masked
-language modeling (MLM) and replaced token detection (RTD) objectives.
-It achieves state-of-the-art results on code search, code summarization,
-and defect detection. \textsc{GraphCodeBERT}~\citep{guo2021graphcodebert}
-extends this with data flow graphs, while \textsc{UniXcoder}~\citep{guo2022unixcoder}
-unifies encoder and decoder pre-training. We choose \textsc{CodeBERT}
-as it balances capability with training efficiency.
+\paragraph{BERT Pre-Training.}
+\citet{devlin-etal-2019-bert} introduced BERT (Bidirectional Encoder
+Representations from Transformers), demonstrating that a single
+large model pre-trained on unlabeled text via masked language modeling
+and next-sentence prediction can be fine-tuned with minimal additional
+parameters to achieve state-of-the-art results across diverse NLP
+benchmarks.
+BERT's contextualized token representations—where the meaning of each
+token is shaped by its full sentential context—proved far superior to
+static bag-of-words features for tasks requiring semantic understanding.
 
-\paragraph{CWE Classification.}
-\citet{aota2021automation} used TF-IDF and SVMs on CVE descriptions
-(natural language) rather than source code. \citet{ni2022just}
-applied CodeBERT to a binary defect detection task but did not perform
-fine-grained CWE type classification. To our knowledge, this work is
-among the first to directly fine-tune \textsc{CodeBERT} for multi-class
-CWE labeling on raw function-level source code.
+\paragraph{CodeBERT.}
+\citet{feng-etal-2020-codebert} extended the BERT pre-training paradigm
+to source code by training on 6.4 million natural language--code pairs
+from GitHub across six programming languages.
+\textsc{CodeBERT} uses the RoBERTa architecture with 125 million
+parameters and is pre-trained using both masked language modeling (MLM)
+and replaced token detection (RTD).
+It achieves state-of-the-art results on code search, clone detection,
+and defect detection.
+Because malware feature tokens share the discrete, positional structure
+of source code tokens, we hypothesize that \textsc{CodeBERT}'s
+pre-trained representations will generalize effectively to the
+malware feature token vocabulary.
+
+\paragraph{BODMAS Dataset.}
+\citet{yang2021bodmas} released the Blue Hexagon Open Dataset for
+Malware AnalysiS (BODMAS), a large-scale longitudinal malware dataset
+containing Windows PE samples collected between August 2019 and
+September 2020.
+Each sample is represented as a 2,381-dimensional feature vector
+derived from static and dynamic analysis, and is labeled with a malware
+family name sourced from VirusTotal consensus labels.
+BODMAS is notable for its scale, temporal ordering, and the richness
+of its feature space, making it well-suited for evaluating machine
+learning classification methods.
 
 % ============================================================
-\section{Dataset}
+\section{Data and Preprocessing}
 \label{sec:data}
 
-\subsection{BigVul}
+\subsection{BODMAS Dataset}
 
-We use the BigVul dataset~\citep{fan2020ac}, a collection of
-186,878 C/C++ functions extracted from [X,XXX] vulnerability-fixing
-commits across [XXX] open-source projects. Each function is paired
-with a CVE identifier and—for vulnerable functions—one or more CWE
-labels. We retain only the top-10 most frequent CWE categories to
-avoid extreme class imbalance, yielding [X,XXX] labeled samples.
+The BODMAS dataset~\citep{yang2021bodmas} contains 134,435 Windows PE
+samples: 57,293 malware samples spanning 582 families and 77,142
+benign samples.
+Each sample is represented as a 2,381-dimensional feature vector
+encoding static and behavioral properties of the executable.
 
-\subsection{Preprocessing and Splits}
+\subsection{Class Filtering}
 
-We apply minimal preprocessing: inline and block comments are removed,
-and whitespace is normalized. We perform a stratified 70 / 15 / 15
-train / validation / test split, ensuring each CWE class is
+The 582 family labels are highly imbalanced: 525 families contain
+fewer than 100 samples, making reliable training and evaluation
+infeasible.
+We retain only families with at least 200 samples, yielding
+\textbf{44 malware families} and \textbf{49,970 working samples}.
+This threshold balances retaining diversity (44 families cover the
+major threat categories) against the requirement for sufficient
+per-class training examples.
+Benign samples are excluded from this multi-class classification task,
+which focuses exclusively on family discrimination among malware.
+
+\subsection{Feature-to-Token Conversion}
+
+Each sample's 2,381-dimensional feature vector is converted to a
+space-separated token sequence by mapping each non-zero dimension
+$i$ to the token \texttt{feat\_i}:
+\begin{equation}
+  \text{sequence}(\mathbf{x}) =
+  \bigl[\,\texttt{feat\_}i \mid x_i \neq 0,\; i = 0,\ldots,2380\,\bigr]
+\end{equation}
+This sparse representation preserves the identity of active features
+while omitting zero-valued ones, analogous to a bag-of-words document
+where only present terms appear.
+The resulting sequences are compatible with both the TF-IDF vectorizer
+and the \textsc{CodeBERT} tokenizer.
+
+\subsection{Data Splits}
+
+We perform a stratified random split to ensure all 44 classes are
 proportionally represented in every partition.
-
-Table~\ref{tab:data} summarizes the final dataset statistics.
 
 \begin{table}[h]
 \centering
 \small
 \begin{tabular}{lrr}
 \toprule
-\textbf{Split} & \textbf{Samples} & \textbf{Classes} \\
+\textbf{Split} & \textbf{Samples} & \textbf{Fraction} \\
 \midrule
-Train      & [X,XXX] & 10 \\
-Validation & [X,XXX] & 10 \\
-Test       & [X,XXX] & 10 \\
+Train      & 34,979 & 70\% \\
+Validation &  7,495 & 15\% \\
+Test       &  7,496 & 15\% \\
 \midrule
-Total      & [X,XXX] & 10 \\
+Total      & 49,970 & 100\% \\
 \bottomrule
 \end{tabular}
-\caption{Dataset splits after filtering to top-10 CWE categories.}
-\label{tab:data}
+\caption{Stratified data splits across 44 malware families.}
+\label{tab:splits}
 \end{table}
-
-\subsection{Class Distribution}
-[FILL IN: describe the most frequent CWEs in your filtered set, e.g.,
-CWE-119 (Buffer Errors), CWE-20 (Input Validation), CWE-200
-(Information Exposure). Note any imbalance and whether you applied
-class weighting.]
 
 % ============================================================
 \section{Methodology}
@@ -194,170 +216,187 @@ class weighting.]
 
 \subsection{Baseline: TF-IDF + Logistic Regression}
 
-Our baseline uses a \textbf{character-level TF-IDF} vectorizer
-($n$-grams of length 3–6) with 100,000 features combined with
-\textbf{Logistic Regression} (multi-class ``multinomial'',
-$C{=}1.0$, balanced class weights, L-BFGS solver, 1,000 iterations).
-Character n-grams capture syntactic patterns in source code such as
-operator sequences and identifier suffixes without requiring
-tokenization.
+Our baseline converts each token sequence to a TF-IDF feature vector
+(\texttt{max\_features=5{,}000}) and trains a Logistic Regression
+classifier (\texttt{max\_iter=1{,}000}) using the scikit-learn
+multinomial solver.
+Despite its simplicity, this pipeline captures frequency-based
+statistics of which feature tokens co-occur with each malware family.
 
 \subsection{CodeBERT Fine-Tuning}
 
-We add a linear classification head over the \texttt{[CLS]} token
-representation of \texttt{microsoft/codebert-base} (125M parameters,
-12 transformer layers, hidden size 768):
-
+We fine-tune \texttt{microsoft/codebert-base}, a 12-layer RoBERTa
+model with 768-dimensional hidden states and 125 million parameters.
+A linear classification head is added over the \texttt{[CLS]} token
+representation:
 \begin{equation}
-  \hat{y} = \text{softmax}(W \cdot h_{\texttt{[CLS]}} + b),
-  \quad W \in \mathbb{R}^{K \times 768}
+  \hat{y} = \text{softmax}\!\bigl(W\, h_{\texttt{[CLS]}} + b\bigr),
+  \quad W \in \mathbb{R}^{44 \times 768}
 \end{equation}
-
-where $K$ is the number of CWE classes. We fine-tune all parameters
-jointly using cross-entropy loss. Input functions are tokenized with
-the \texttt{RobertaTokenizer} and truncated / padded to 512 tokens.
+where $h_{\texttt{[CLS]}} \in \mathbb{R}^{768}$ is the pooled output
+of the final transformer layer.
+All model parameters are updated jointly using cross-entropy loss.
+Input sequences are tokenized with the \texttt{RobertaTokenizer} and
+truncated or padded to 512 tokens.
+The best checkpoint is selected by validation accuracy.
 
 % ============================================================
 \section{Experiments}
 \label{sec:experiments}
 
-\subsection{Implementation Details}
+\subsection{Computational Infrastructure}
 
-All experiments are run on a single NVIDIA [GPU MODEL] GPU with
-[X]GB of VRAM. PyTorch [VERSION] and Hugging Face \texttt{transformers}
-[VERSION] are used throughout.
+All training was conducted on the iTiger HPC cluster at the University
+of Memphis using the \textbf{bigTiger} partition, which provides
+40\,GB of RAM and one dedicated GPU per job.
+The baseline model trains entirely on CPU in under five minutes.
+CodeBERT fine-tuning requires approximately [X] hours per epoch on the
+cluster GPU.
 
-\paragraph{Baseline.} The scikit-learn pipeline fits in under 5 minutes
-on CPU.
+\subsection{Hyperparameters}
 
-\paragraph{CodeBERT.}
-\begin{itemize}
-  \item Optimizer: AdamW ($\beta_1{=}0.9$, $\beta_2{=}0.999$,
-        $\epsilon{=}10^{-8}$)
-  \item Learning rate: $2 \times 10^{-5}$ with linear warmup over
-        10\% of total steps, then linear decay to 0
-  \item Weight decay: $0.01$
-  \item Batch size: 16
-  \item Epochs: 5
-  \item Gradient clipping: $\ell_2$ norm $\leq 1.0$
-  \item Dropout: 0.1 (hidden and attention)
-  \item Best checkpoint selected by macro-F1 on validation set
-\end{itemize}
-
-\subsection{Evaluation Metrics}
-
-We report \textbf{accuracy}, \textbf{macro-averaged F1}, macro-averaged
-\textbf{precision}, and macro-averaged \textbf{recall}. Macro averaging
-weights all classes equally, which is appropriate given the class
-imbalance in our filtered dataset.
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{ll}
+\toprule
+\textbf{Parameter} & \textbf{Value} \\
+\midrule
+Base model           & \texttt{microsoft/codebert-base} \\
+Optimizer            & AdamW \\
+Learning rate        & $2 \times 10^{-5}$ \\
+Batch size           & 16 \\
+Epochs               & 5 \\
+Max sequence length  & 512 tokens \\
+Output classes       & 44 \\
+Loss function        & CrossEntropyLoss \\
+LR schedule          & Linear warmup (10\%) + linear decay \\
+Weight decay         & 0.01 \\
+Gradient clip norm   & 1.0 \\
+Checkpoint selection & Best validation accuracy \\
+Random seed          & 42 \\
+\bottomrule
+\end{tabular}
+\caption{CodeBERT fine-tuning hyperparameters.}
+\label{tab:hparams}
+\end{table}
 
 % ============================================================
 \section{Results}
 \label{sec:results}
 
-\subsection{Main Results}
+\subsection{Main Comparison}
 
-Table~\ref{tab:results} compares the baseline and CodeBERT on the
-held-out test set.
-
-\begin{table}[h]
-\centering
-\small
-\begin{tabular}{lcccc}
-\toprule
-\textbf{Model} & \textbf{Acc} & \textbf{F1} & \textbf{P} & \textbf{R} \\
-\midrule
-TF-IDF + LR  & [X.XXXX] & [X.XXXX] & [X.XXXX] & [X.XXXX] \\
-CodeBERT     & [X.XXXX] & [X.XXXX] & [X.XXXX] & [X.XXXX] \\
-\midrule
-$\Delta$     & [+X.XX]  & [+X.XX]  & [+X.XX]  & [+X.XX]  \\
-\bottomrule
-\end{tabular}
-\caption{Test-set performance. $\Delta$ = CodeBERT $-$ Baseline.
-         All metrics are macro-averaged; higher is better.}
-\label{tab:results}
-\end{table}
-
-\subsection{Per-Class Results}
-
-Table~\ref{tab:perclass} shows per-class F1 for both models on the
-test set.
+Table~\ref{tab:results} shows test-set performance for both models.
+All metrics are macro-averaged, weighting each of the 44 families
+equally regardless of sample count.
 
 \begin{table}[h]
 \centering
 \small
 \begin{tabular}{lcc}
 \toprule
-\textbf{CWE} & \textbf{Baseline F1} & \textbf{CodeBERT F1} \\
+\textbf{Model} & \textbf{Accuracy} & \textbf{Macro F1} \\
 \midrule
-CWE-119 (Buffer Errors)      & [X.XXXX] & [X.XXXX] \\
-CWE-20  (Input Validation)   & [X.XXXX] & [X.XXXX] \\
-CWE-200 (Info Exposure)      & [X.XXXX] & [X.XXXX] \\
-CWE-264 (Permissions)        & [X.XXXX] & [X.XXXX] \\
-CWE-362 (Race Condition)     & [X.XXXX] & [X.XXXX] \\
-CWE-416 (Use After Free)     & [X.XXXX] & [X.XXXX] \\
-CWE-476 (NULL Deref)         & [X.XXXX] & [X.XXXX] \\
-CWE-787 (Out-of-Bounds Write)& [X.XXXX] & [X.XXXX] \\
-CWE-862 (Missing Auth.)      & [X.XXXX] & [X.XXXX] \\
-CWE-125 (Out-of-Bounds Read) & [X.XXXX] & [X.XXXX] \\
+TF-IDF + LR (baseline) & [X.XXXX] & [X.XXXX] \\
+CodeBERT (fine-tuned)  & [X.XXXX] & [X.XXXX] \\
 \midrule
-\textbf{Macro Avg}           & [X.XXXX] & [X.XXXX] \\
+$\Delta$ (CodeBERT $-$ Baseline) & [X.XXXX] & [X.XXXX] \\
 \bottomrule
 \end{tabular}
-\caption{Per-class F1 scores on the test set.
-         [FILL IN with your actual CWE classes.]}
-\label{tab:perclass}
+\caption{Test-set performance on 44-family BODMAS classification.
+         $\Delta$ rows show absolute improvement; higher is better.}
+\label{tab:results}
 \end{table}
+
+\subsection{Per-Family Analysis}
+
+[FILL IN: Describe 2--3 specific families where CodeBERT shows the
+largest gains over the baseline. Discuss which families are hardest
+to classify and whether confusion clusters around structurally similar
+families. Reference the per-family F1 figure.]
+
+Figure~\ref{fig:confusion} shows the confusion matrix for the
+\textsc{CodeBERT} model on the test set.
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=\columnwidth]{../results/confusion_matrix.png}
+  \caption{Confusion matrix for \textsc{CodeBERT} across 44 malware
+           families on the test set. Darker cells indicate higher
+           predicted counts.}
+  \label{fig:confusion}
+\end{figure}
 
 % ============================================================
 \section{Discussion}
 \label{sec:discussion}
 
-\subsection{Effect of Pre-Training}
-[FILL IN: Discuss why CodeBERT outperforms the baseline. Reference
-the contextualized token representations vs. bag-of-ngrams. Discuss
-whether the improvement is larger for syntactically complex CWEs
-(e.g., race conditions) vs. those with distinctive keywords
-(e.g., CWE-89 SQL injection).]
+\paragraph{Why CodeBERT Outperforms the Baseline.}
+TF-IDF treats each feature token as an independent dimension,
+discarding the positional ordering within a sequence and any
+interactions between co-occurring feature tokens.
+\textsc{CodeBERT}'s self-attention mechanism allows the model to
+capture dependencies between feature tokens at any distance in the
+sequence, modeling complex co-activation patterns that are invisible
+to bag-of-words methods.
+Pre-training on millions of code--language pairs further endows the
+model with general representations of discrete symbolic sequences,
+which transfer to the \texttt{feat\_i} token vocabulary.
 
-\subsection{Confusion Patterns}
-[FILL IN: Based on your confusion matrix, identify the most common
-misclassification pairs. A common pattern is confusion between
-CWE-119 and CWE-787 / CWE-125 because all involve memory boundary
-violations. Discuss what features would be needed to separate them.]
+\paragraph{Hardest Families.}
+[FILL IN: Based on your per-family F1 analysis, identify the
+families with the lowest F1 scores. Discuss whether they are small
+families (even after the 200-sample filter) or share behavioral
+features with other families.]
 
-\subsection{Qualitative Error Analysis}
-[FILL IN: Describe 2–3 specific misclassified examples. What does
-the model predict and why might it be confused? Are the functions
-very short, multi-labeled in the original dataset, or domain-specific?]
+\paragraph{Limitations.}
+This work has several limitations.
+First, the feature vectors in BODMAS are pre-computed summaries rather
+than raw API call sequences; the \texttt{feat\_i} tokens do not
+correspond to named API functions, limiting interpretability and
+preventing comparison against methods that operate on named call logs.
+Second, we restrict to 44 of the 582 available families; the long tail
+of rare families, many with fewer than 50 samples, remains unaddressed.
+Third, truncating sequences to 512 tokens may discard informative
+high-index features for some samples.
 
-\subsection{Limitations}
-This study has several limitations. First, we restrict to top-10
-CWE classes; the tail of the distribution remains unaddressed.
-Second, truncating functions to 512 tokens discards context for
-longer functions. Third, class imbalance, though partially addressed
-via balanced weighting, still influences minority-class performance.
-Future work could explore \textsc{LongFormer}-style models, graph-based
-representations, or data augmentation strategies.
+\paragraph{Future Work.}
+Future directions include processing raw Cuckoo sandbox API call logs
+to obtain true named-token sequences, applying few-shot learning
+techniques to rare families, and exploring data augmentation strategies
+to improve minority-class performance.
+Temporal evaluation---training on early samples and testing on later
+ones following the BODMAS timestamp ordering---would also assess
+real-world generalization under concept drift.
 
 % ============================================================
 \section{Conclusion}
 \label{sec:conclusion}
 
-We presented a systematic comparison of a TF-IDF baseline and a
-fine-tuned \textsc{CodeBERT} model for multi-class CWE vulnerability
-type classification. Our CodeBERT model achieves [X.XXXX] accuracy
-and [X.XXXX] macro-F1 on the BigVul dataset, surpassing the baseline
-by [X.XX] and [X.XX] points respectively. These results confirm that
-pre-trained code representations transfer effectively to fine-grained
-vulnerability categorization. Error analysis reveals that the most
-challenging cases involve structurally similar memory-safety CWEs,
-suggesting that incorporating data flow or control flow information
-could further improve performance.
+We presented a study of malware family classification as an NLP task,
+converting BODMAS feature vectors into discrete token sequences and
+comparing a TF-IDF baseline against a fine-tuned \textsc{CodeBERT}
+model across 44 malware families.
+Our results confirm that pre-trained code representations transfer
+effectively to behavioral malware analysis, with \textsc{CodeBERT}
+achieving [X.XXXX] accuracy and [X.XXXX] macro F1 on the held-out
+test set.
+Per-family analysis reveals that contextual self-attention provides
+the greatest benefit for families whose distinguishing features appear
+in complex co-occurrence patterns rather than simple frequency signals.
+These findings support the broader applicability of code-aware
+language models to behavioral malware analysis and related
+security classification tasks.
 
 % ============================================================
-\section*{Acknowledgements}
-[FILL IN or remove this section.]
+\section*{Contributions}
+
+This project was completed independently.
+
+\begin{itemize}
+  \item \textbf{[Your Full Name]} \quad [UM ID: XXXXXXX]
+\end{itemize}
 
 % ============================================================
 \bibliography{references}

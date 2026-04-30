@@ -1,22 +1,23 @@
-# Complete Project Guide: Vulnerability Classification with CodeBERT
+# Project Guide: Malware Family Classification via NLP on API Call Sequences Using CodeBERT
 
-> **Task:** Classify source code snippets by vulnerability type (CWE category) using a baseline TF-IDF + Logistic Regression model and a fine-tuned CodeBERT model.
-> **Fill in:** Replace all `[X.XXXX]` placeholders with your actual metric values after running training.
+> **Dataset:** BODMAS (134,435 samples, 582 malware families, filtered to 44 families)
+> **Cluster:** iTiger HPC — bigTiger partition
+> **Fill in:** Replace all `[X.XXXX]` placeholders with real metric values after training.
 
 ---
 
 ## Table of Contents
 
 1. [Project Structure](#1-project-structure)
-2. [Environment Setup](#2-environment-setup)
-3. [Dataset Acquisition](#3-dataset-acquisition)
-4. [Exploratory Data Analysis](#4-exploratory-data-analysis)
-5. [Preprocessing](#5-preprocessing)
-6. [Baseline Model](#6-baseline-model)
-7. [CodeBERT Fine-Tuning](#7-codebert-fine-tuning)
-8. [Evaluation](#8-evaluation)
-9. [Error Analysis](#9-error-analysis)
-10. [Report & Slides Compilation](#10-report--slides-compilation)
+2. [Conda Environment Setup](#2-conda-environment-setup)
+3. [Upload Data to Cluster](#3-upload-data-to-cluster)
+4. [iTiger HPC Batch Scripts](#4-itiger-hpc-batch-scripts)
+5. [Jupyter Access via SSH Tunnel](#5-jupyter-access-via-ssh-tunnel)
+6. [Data Preprocessing](#6-data-preprocessing)
+7. [Baseline Model](#7-baseline-model)
+8. [CodeBERT Training Script](#8-codebert-training-script)
+9. [Analysis and Visualization](#9-analysis-and-visualization)
+10. [Report Compilation](#10-report-compilation)
 11. [Submission Checklist](#11-submission-checklist)
 
 ---
@@ -26,209 +27,371 @@
 ```
 project/
 ├── data/
-│   ├── raw/                  # original downloaded dataset
-│   └── processed/            # tokenized, split CSVs
+│   ├── bodmas.npz                # raw feature matrix + labels
+│   ├── bodmas_metadata.csv       # sample metadata (family names, timestamps)
+│   └── processed/
+│       └── splits.pkl            # train/val/test splits after preprocessing
 ├── notebooks/
 │   ├── 01_eda.ipynb
 │   ├── 02_preprocessing.ipynb
 │   ├── 03_baseline.ipynb
-│   └── 04_codebert.ipynb
+│   └── 04_analysis.ipynb
 ├── src/
-│   ├── dataset.py            # PyTorch Dataset class
-│   ├── baseline.py           # TF-IDF + LR pipeline
-│   ├── model.py              # CodeBERT fine-tune wrapper
-│   ├── train.py              # training loop
-│   └── evaluate.py           # metrics computation
+│   └── train_codebert.py         # full fine-tuning script
+├── models/
+│   └── codebert_best/            # saved best checkpoint (created at runtime)
+├── results/
+│   ├── baseline_results.pkl
+│   └── codebert_results.pkl
 ├── report/
 │   ├── main.tex
 │   └── references.bib
-├── slides/
-│   └── slides.html
-├── requirements.txt
+├── run_jupyter.sh                # sbatch script — interactive Jupyter session
+├── run_train.sh                  # sbatch script — CodeBERT training job
 └── project-guide.md
 ```
 
 ---
 
-## 2. Environment Setup
+## 2. Conda Environment Setup
 
-### 2.1 Python Virtual Environment
-
-```bash
-# Create and activate a virtual environment
-python3 -m venv .venv
-source .venv/bin/activate        # Linux / macOS
-# .venv\Scripts\activate         # Windows
-
-# Upgrade pip
-pip install --upgrade pip
-```
-
-### 2.2 Install Dependencies
+Run these commands on the iTiger login node:
 
 ```bash
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
-pip install transformers datasets scikit-learn pandas numpy matplotlib seaborn
-pip install jupyter ipykernel accelerate evaluate
-pip install tqdm tokenizers sentencepiece
+# Create environment with Python 3.9
+conda create -n malware python=3.9 -y
+conda activate malware
 
-# Save exact versions
-pip freeze > requirements.txt
-```
+# Install all required packages
+pip install numpy pandas matplotlib seaborn scikit-learn scipy jupyter \
+            transformers torch ydata-profiling
 
-### 2.3 Verify GPU Access
-
-```python
-import torch
-print(torch.cuda.is_available())          # should print True
-print(torch.cuda.get_device_name(0))      # e.g. NVIDIA A100
-```
-
-### 2.4 Hugging Face Login (for gated models)
-
-```bash
-huggingface-cli login
-# paste your HF token when prompted
+# Verify GPU-capable PyTorch (run after allocating a GPU node)
+python -c "import torch; print(torch.cuda.is_available()); print(torch.cuda.get_device_name(0))"
 ```
 
 ---
 
-## 3. Dataset Acquisition
+## 3. Upload Data to Cluster
 
-### 3.1 BigVul Dataset (recommended)
-
-BigVul contains 3,754 C/C++ vulnerability-fixing commits labeled with CWE IDs.
+From your **local machine**, copy the BODMAS files to your iTiger home directory:
 
 ```bash
-# Download BigVul
-wget https://drive.google.com/file/d/1-0VhnHBp9IGh90s2wCNjeCMuy70HPl8X/view
-# or clone the MSR2020 repo
-git clone https://github.com/ZeoVan/MSR_20_Code_vulnerability_CSV_Dataset.git data/raw/bigvul
+# Upload raw data files
+scp bodmas.npz        jtbass1@itiger.memphis.edu:~/project/data/
+scp bodmas_metadata.csv jtbass1@itiger.memphis.edu:~/project/data/
+
+# Verify upload
+ssh jtbass1@itiger.memphis.edu "ls -lh ~/project/data/"
 ```
 
+---
+
+## 4. iTiger HPC Batch Scripts
+
+### 4.1 `run_jupyter.sh` — Interactive Jupyter Session
+
+Save as `run_jupyter.sh` in your project root:
+
+```bash
+#!/bin/bash
+#SBATCH --job-name=jupyter_malware
+#SBATCH --partition=bigTiger
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=40G
+#SBATCH --gres=gpu:1
+#SBATCH --time=08:00:00
+#SBATCH --output=jupyter_%j.log
+
+module load anaconda3
+conda activate malware
+
+# Print the node name so you can build the SSH tunnel
+echo "Jupyter node: $(hostname)"
+
+jupyter notebook --no-browser --port=8888 --ip=0.0.0.0
+```
+
+Submit the job:
+
+```bash
+sbatch run_jupyter.sh
+# Check the log to get NODENAME
+tail -f jupyter_<JOB_ID>.log
+```
+
+### 4.2 `run_train.sh` — CodeBERT Training Job
+
+Save as `run_train.sh` in your project root:
+
+```bash
+#!/bin/bash
+#SBATCH --job-name=codebert_malware
+#SBATCH --partition=bigTiger
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=40G
+#SBATCH --gres=gpu:1
+#SBATCH --time=12:00:00
+#SBATCH --output=train_%j.log
+
+module load anaconda3
+conda activate malware
+
+cd ~/project
+python src/train_codebert.py
+```
+
+Submit the training job:
+
+```bash
+sbatch run_train.sh
+tail -f train_<JOB_ID>.log
+```
+
+---
+
+## 5. Jupyter Access via SSH Tunnel
+
+After the Jupyter job starts and you have `NODENAME` from the log:
+
+```bash
+# Two-hop SSH tunnel — run this on your LOCAL machine
+ssh -L 9999:localhost:9999 jtbass1@itiger.memphis.edu \
+    -t ssh -L 9999:localhost:8888 NODENAME
+```
+
+Then open `http://localhost:9999` in your browser.
+Copy the token from the log file: `tail jupyter_<JOB_ID>.log`.
+
+---
+
+## 6. Data Preprocessing
+
+Run in `notebooks/02_preprocessing.ipynb` or as a standalone script.
+
+### 6.1 Load BODMAS Data
+
 ```python
+import numpy as np
 import pandas as pd
 
-df = pd.read_csv("data/raw/bigvul/MSR_20_Code_vulnerability_CSV_Dataset.csv")
-print(df.shape)             # (186,878, 19)
-print(df.columns.tolist())
-print(df["CWE ID"].value_counts().head(10))
+data = np.load("data/bodmas.npz", allow_pickle=True)
+X    = data["X"]          # shape: (134435, 2381)
+y    = data["y"]          # malware family labels (strings)
+
+meta = pd.read_csv("data/bodmas_metadata.csv")
+print(f"Total samples : {X.shape[0]}")
+print(f"Feature dims  : {X.shape[1]}")
+print(f"Unique families: {len(np.unique(y))}")
 ```
 
-### 3.2 Alternative: Devign Dataset
-
-```bash
-pip install gdown
-gdown https://drive.google.com/uc?id=1x6hoF7G-tSYxg8AFybggypLZgMGDNHfF -O data/raw/devign.json
-```
+### 6.2 Filter to Families with >= 200 Samples
 
 ```python
-import json, pandas as pd
+from collections import Counter
 
-with open("data/raw/devign.json") as f:
-    raw = json.load(f)
-df = pd.DataFrame(raw)
-print(df.head())
+family_counts = Counter(y)
+valid_families = {fam for fam, cnt in family_counts.items() if cnt >= 200}
+print(f"Families with >= 200 samples: {len(valid_families)}")  # 44
+
+mask = np.array([label in valid_families for label in y])
+X_filtered = X[mask]
+y_filtered = y[mask]
+print(f"Working samples after filtering: {X_filtered.shape[0]}")  # 49,970
 ```
 
-### 3.3 Train / Validation / Test Split
+### 6.3 Label Encoding
+
+```python
+from sklearn.preprocessing import LabelEncoder
+import pickle, os
+
+le = LabelEncoder()
+y_encoded = le.fit_transform(y_filtered)
+
+print(f"Number of classes: {len(le.classes_)}")  # 44
+print("Sample family mapping:")
+for i, name in enumerate(le.classes_[:5]):
+    print(f"  {i}: {name}")
+
+os.makedirs("data/processed", exist_ok=True)
+with open("data/processed/label_encoder.pkl", "wb") as f:
+    pickle.dump(le, f)
+```
+
+### 6.4 Feature Vector to Token Sequence
+
+Each non-zero feature dimension `i` becomes the token `"feat_i"`.
+This is the NLP framing that lets transformer models process feature vectors as text.
+
+```python
+def vector_to_sequence(feature_vector):
+    """Convert a feature vector to a space-separated token sequence.
+
+    Non-zero dimension i becomes token 'feat_i'.
+    Zero-valued dimensions are omitted (sparse representation).
+    """
+    tokens = [f"feat_{i}" for i, val in enumerate(feature_vector) if val != 0]
+    return " ".join(tokens)
+
+# Convert all samples
+print("Converting feature vectors to token sequences...")
+sequences = [vector_to_sequence(row) for row in X_filtered]
+print(f"Example sequence (first 80 chars): {sequences[0][:80]}")
+print(f"Average tokens per sequence: {sum(len(s.split()) for s in sequences) / len(sequences):.1f}")
+```
+
+### 6.5 Stratified Train / Val / Test Split
 
 ```python
 from sklearn.model_selection import train_test_split
 
-# Keep top-N CWE classes to avoid extreme class imbalance
-TOP_N = 10
-top_cwes = df["CWE ID"].value_counts().head(TOP_N).index
-df_filtered = df[df["CWE ID"].isin(top_cwes)].copy()
+X_train_seq, X_test_seq, y_train, y_test = train_test_split(
+    sequences, y_encoded,
+    test_size=0.15,
+    stratify=y_encoded,
+    random_state=42,
+)
+X_train_seq, X_val_seq, y_train, y_val = train_test_split(
+    X_train_seq, y_train,
+    test_size=0.15 / 0.85,   # 15% of original total
+    stratify=y_train,
+    random_state=42,
+)
 
-train_df, test_df = train_test_split(df_filtered, test_size=0.15, stratify=df_filtered["CWE ID"], random_state=42)
-train_df, val_df  = train_test_split(train_df,    test_size=0.15, stratify=train_df["CWE ID"],  random_state=42)
+print(f"Train : {len(X_train_seq):,}")   # 34,979
+print(f"Val   : {len(X_val_seq):,}")     #  7,495
+print(f"Test  : {len(X_test_seq):,}")    #  7,496
 
-print(f"Train: {len(train_df)}  Val: {len(val_df)}  Test: {len(test_df)}")
-
-train_df.to_csv("data/processed/train.csv", index=False)
-val_df.to_csv("data/processed/val.csv",     index=False)
-test_df.to_csv("data/processed/test.csv",   index=False)
+splits = {
+    "X_train": X_train_seq, "y_train": y_train,
+    "X_val":   X_val_seq,   "y_val":   y_val,
+    "X_test":  X_test_seq,  "y_test":  y_test,
+}
+with open("data/processed/splits.pkl", "wb") as f:
+    pickle.dump(splits, f)
+print("Saved data/processed/splits.pkl")
 ```
 
 ---
 
-## 4. Exploratory Data Analysis
+## 7. Baseline Model
 
-Run `notebooks/01_eda.ipynb` with the cells below.
-
-```python
-import pandas as pd, matplotlib.pyplot as plt, seaborn as sns
-
-train_df = pd.read_csv("data/processed/train.csv")
-
-# --- Class distribution ---
-fig, ax = plt.subplots(figsize=(10, 4))
-train_df["CWE ID"].value_counts().plot(kind="bar", ax=ax, color="steelblue")
-ax.set_title("CWE Class Distribution (Train)")
-ax.set_xlabel("CWE ID"); ax.set_ylabel("Count")
-plt.tight_layout(); plt.savefig("data/processed/class_dist.png", dpi=150)
-
-# --- Code length distribution ---
-train_df["code_len"] = train_df["func_before"].str.split().str.len()
-print(train_df["code_len"].describe())
-
-fig, ax = plt.subplots(figsize=(8, 3))
-train_df["code_len"].clip(upper=1000).hist(bins=50, ax=ax, color="tomato")
-ax.set_title("Token Count Distribution (clipped at 1000)"); ax.set_xlabel("Tokens")
-plt.tight_layout(); plt.savefig("data/processed/len_dist.png", dpi=150)
-```
-
----
-
-## 5. Preprocessing
-
-### 5.1 Label Encoding
+Run in `notebooks/03_baseline.ipynb`.
 
 ```python
-# src/dataset.py  (relevant excerpt)
-from sklearn.preprocessing import LabelEncoder
-import pandas as pd
-
-train_df = pd.read_csv("data/processed/train.csv")
-le = LabelEncoder()
-le.fit(train_df["CWE ID"])
-
-for split in ["train", "val", "test"]:
-    df = pd.read_csv(f"data/processed/{split}.csv")
-    df["label"] = le.transform(df["CWE ID"])
-    df.to_csv(f"data/processed/{split}.csv", index=False)
-
 import pickle
-with open("data/processed/label_encoder.pkl", "wb") as f:
-    pickle.dump(le, f)
+from sklearn.pipeline import Pipeline
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, f1_score, classification_report
+import os
 
-print("Classes:", le.classes_)
-NUM_LABELS = len(le.classes_)
+with open("data/processed/splits.pkl", "rb") as f:
+    splits = pickle.load(f)
+
+X_train = splits["X_train"]; y_train = splits["y_train"]
+X_val   = splits["X_val"];   y_val   = splits["y_val"]
+X_test  = splits["X_test"];  y_test  = splits["y_test"]
+
+# Build and fit pipeline
+pipeline = Pipeline([
+    ("tfidf", TfidfVectorizer(max_features=5000)),
+    ("clf",   LogisticRegression(max_iter=1000, n_jobs=-1, random_state=42)),
+])
+pipeline.fit(X_train, y_train)
+
+# Evaluate on test set
+preds    = pipeline.predict(X_test)
+test_acc = accuracy_score(y_test, preds)
+test_f1  = f1_score(y_test, preds, average="macro")
+
+print(f"Baseline  Accuracy : {test_acc:.4f}")
+print(f"Baseline  Macro-F1 : {test_f1:.4f}")
+print()
+print(classification_report(y_test, preds))
+
+# Save results
+os.makedirs("results", exist_ok=True)
+with open("results/baseline_results.pkl", "wb") as f:
+    pickle.dump({
+        "test_acc": test_acc,
+        "test_f1":  test_f1,
+        "preds":    preds,
+        "targets":  y_test,
+        "pipeline": pipeline,
+    }, f)
+print("Saved results/baseline_results.pkl")
 ```
 
-### 5.2 PyTorch Dataset Class
+---
+
+## 8. CodeBERT Training Script
+
+Save the full script below as `src/train_codebert.py`, then submit with `sbatch run_train.sh`.
 
 ```python
-# src/dataset.py
+#!/usr/bin/env python3
+"""
+src/train_codebert.py
+Fine-tune microsoft/codebert-base for malware family classification.
+Run on iTiger HPC via: sbatch run_train.sh  (bigTiger partition, 1 GPU)
+"""
+import os, pickle, time
+import numpy as np
 import torch
-from torch.utils.data import Dataset
-from transformers import RobertaTokenizer
+from torch.utils.data import Dataset, DataLoader
+from transformers import (RobertaTokenizer,
+                          RobertaForSequenceClassification,
+                          get_linear_schedule_with_warmup)
+from torch.optim import AdamW
+from sklearn.metrics import accuracy_score, f1_score
 
-TOKENIZER = RobertaTokenizer.from_pretrained("microsoft/codebert-base")
-MAX_LEN   = 512
+# ── Config ────────────────────────────────────────────────────────────────────
+DATA_FILE    = "data/processed/splits.pkl"
+MODEL_DIR    = "models/codebert_best"
+RESULTS_FILE = "results/codebert_results.pkl"
+BASE_MODEL   = "microsoft/codebert-base"
+MAX_LEN      = 512
+BATCH_SIZE   = 16
+EPOCHS       = 5
+LR           = 2e-5
+SEED         = 42
+# ─────────────────────────────────────────────────────────────────────────────
 
-class CodeDataset(Dataset):
-    def __init__(self, df, text_col="func_before"):
-        self.texts  = df[text_col].fillna("").tolist()
-        self.labels = df["label"].tolist()
+torch.manual_seed(SEED)
+np.random.seed(SEED)
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"Device : {device}")
+if torch.cuda.is_available():
+    print(f"GPU    : {torch.cuda.get_device_name(0)}")
 
+# ── Load preprocessed splits ─────────────────────────────────────────────────
+with open(DATA_FILE, "rb") as f:
+    splits = pickle.load(f)
+
+X_train, y_train = splits["X_train"], splits["y_train"]
+X_val,   y_val   = splits["X_val"],   splits["y_val"]
+X_test,  y_test  = splits["X_test"],  splits["y_test"]
+NUM_CLASSES = int(max(y_train)) + 1
+print(f"Classes: {NUM_CLASSES}  Train: {len(X_train)}  Val: {len(X_val)}  Test: {len(X_test)}")
+
+# ── Dataset ───────────────────────────────────────────────────────────────────
+tokenizer = RobertaTokenizer.from_pretrained(BASE_MODEL)
+
+class MalwareDataset(Dataset):
+    def __init__(self, sequences, labels):
+        self.sequences = sequences
+        self.labels    = labels
     def __len__(self):
         return len(self.labels)
-
     def __getitem__(self, idx):
-        enc = TOKENIZER(
-            self.texts[idx],
+        enc = tokenizer(
+            self.sequences[idx],
             max_length=MAX_LEN,
             padding="max_length",
             truncation=True,
@@ -239,315 +402,212 @@ class CodeDataset(Dataset):
             "attention_mask": enc["attention_mask"].squeeze(0),
             "label":          torch.tensor(self.labels[idx], dtype=torch.long),
         }
-```
 
-### 5.3 Preprocessing for Baseline
+train_loader = DataLoader(MalwareDataset(X_train, y_train),
+                          batch_size=BATCH_SIZE, shuffle=True,  num_workers=4, pin_memory=True)
+val_loader   = DataLoader(MalwareDataset(X_val,   y_val),
+                          batch_size=BATCH_SIZE, shuffle=False, num_workers=4, pin_memory=True)
+test_loader  = DataLoader(MalwareDataset(X_test,  y_test),
+                          batch_size=BATCH_SIZE, shuffle=False, num_workers=4, pin_memory=True)
 
-```python
-# Baseline uses raw token counts; minimal cleaning only
-import re
+# ── Model ─────────────────────────────────────────────────────────────────────
+model = RobertaForSequenceClassification.from_pretrained(
+    BASE_MODEL,
+    num_labels=NUM_CLASSES,
+).to(device)
 
-def clean_code(text: str) -> str:
-    text = re.sub(r"//.*?\n",  " ", text)   # strip line comments
-    text = re.sub(r"/\*.*?\*/", " ", text, flags=re.DOTALL)  # block comments
-    text = re.sub(r"\s+", " ", text).strip()
-    return text
+optimizer    = AdamW(model.parameters(), lr=LR, weight_decay=0.01)
+total_steps  = len(train_loader) * EPOCHS
+warmup_steps = int(0.1 * total_steps)
+scheduler    = get_linear_schedule_with_warmup(optimizer, warmup_steps, total_steps)
 
-train_df["clean"] = train_df["func_before"].fillna("").apply(clean_code)
-```
+# ── Training loop ─────────────────────────────────────────────────────────────
+best_val_acc = 0.0
+history      = []
 
----
-
-## 6. Baseline Model
-
-### 6.1 TF-IDF + Logistic Regression
-
-```python
-# src/baseline.py
-from sklearn.pipeline import Pipeline
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import classification_report, accuracy_score, f1_score
-import pandas as pd, pickle
-
-train_df = pd.read_csv("data/processed/train.csv")
-val_df   = pd.read_csv("data/processed/val.csv")
-test_df  = pd.read_csv("data/processed/test.csv")
-
-pipeline = Pipeline([
-    ("tfidf", TfidfVectorizer(
-        analyzer="char_wb",   # character n-grams capture code syntax
-        ngram_range=(3, 6),
-        max_features=100_000,
-        sublinear_tf=True,
-    )),
-    ("clf", LogisticRegression(
-        max_iter=1000,
-        C=1.0,
-        class_weight="balanced",
-        solver="lbfgs",
-        multi_class="multinomial",
-        n_jobs=-1,
-    )),
-])
-
-pipeline.fit(train_df["clean"], train_df["label"])
-
-# --- Evaluate on test set ---
-preds = pipeline.predict(test_df["clean"])
-acc   = accuracy_score(test_df["label"], preds)
-f1    = f1_score(test_df["label"], preds, average="macro")
-
-print(f"Baseline  Accuracy: {acc:.4f}  Macro-F1: {f1:.4f}")
-print(classification_report(test_df["label"], preds))
-
-with open("data/processed/baseline_pipeline.pkl", "wb") as f:
-    pickle.dump(pipeline, f)
-```
-
-### 6.2 Additional Baselines (optional)
-
-```python
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.svm import LinearSVC
-
-# Swap the clf step to compare
-rf_pipeline = Pipeline([
-    ("tfidf", TfidfVectorizer(ngram_range=(1, 2), max_features=50_000, sublinear_tf=True)),
-    ("clf",   RandomForestClassifier(n_estimators=200, n_jobs=-1, random_state=42)),
-])
-rf_pipeline.fit(train_df["clean"], train_df["label"])
-```
-
----
-
-## 7. CodeBERT Fine-Tuning
-
-### 7.1 Model Definition
-
-```python
-# src/model.py
-from transformers import RobertaForSequenceClassification
-
-def get_codebert_model(num_labels: int):
-    model = RobertaForSequenceClassification.from_pretrained(
-        "microsoft/codebert-base",
-        num_labels=num_labels,
-        hidden_dropout_prob=0.1,
-        attention_probs_dropout_prob=0.1,
-    )
-    return model
-```
-
-### 7.2 Training Loop
-
-```python
-# src/train.py
-import torch
-from torch.utils.data import DataLoader
-from torch.optim import AdamW
-from transformers import get_linear_schedule_with_warmup
-from tqdm import tqdm
-import pandas as pd
-
-from src.dataset import CodeDataset
-from src.model   import get_codebert_model
-
-DEVICE     = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-BATCH_SIZE = 16
-EPOCHS     = 5
-LR         = 2e-5
-WARMUP     = 0.1   # fraction of total steps
-
-train_df = pd.read_csv("data/processed/train.csv")
-val_df   = pd.read_csv("data/processed/val.csv")
-NUM_LABELS = train_df["label"].nunique()
-
-train_loader = DataLoader(CodeDataset(train_df), batch_size=BATCH_SIZE, shuffle=True)
-val_loader   = DataLoader(CodeDataset(val_df),   batch_size=BATCH_SIZE, shuffle=False)
-
-model     = get_codebert_model(NUM_LABELS).to(DEVICE)
-optimizer = AdamW(model.parameters(), lr=LR, weight_decay=0.01)
-
-total_steps   = len(train_loader) * EPOCHS
-warmup_steps  = int(total_steps * WARMUP)
-scheduler     = get_linear_schedule_with_warmup(optimizer, warmup_steps, total_steps)
-
-best_val_f1 = 0.0
 for epoch in range(1, EPOCHS + 1):
     # --- Train ---
     model.train()
-    total_loss = 0
-    for batch in tqdm(train_loader, desc=f"Epoch {epoch} [train]"):
-        input_ids = batch["input_ids"].to(DEVICE)
-        attn_mask = batch["attention_mask"].to(DEVICE)
-        labels    = batch["label"].to(DEVICE)
-
-        outputs = model(input_ids=input_ids, attention_mask=attn_mask, labels=labels)
-        loss    = outputs.loss
-        loss.backward()
+    train_loss = 0.0
+    t0 = time.time()
+    for batch in train_loader:
+        input_ids = batch["input_ids"].to(device)
+        attn_mask = batch["attention_mask"].to(device)
+        labels    = batch["label"].to(device)
+        outputs   = model(input_ids=input_ids, attention_mask=attn_mask, labels=labels)
+        outputs.loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         optimizer.step(); scheduler.step(); optimizer.zero_grad()
-        total_loss += loss.item()
-
-    avg_loss = total_loss / len(train_loader)
+        train_loss += outputs.loss.item()
+    avg_loss = train_loss / len(train_loader)
 
     # --- Validate ---
     model.eval()
-    all_preds, all_labels = [], []
+    preds, targets = [], []
     with torch.no_grad():
-        for batch in tqdm(val_loader, desc=f"Epoch {epoch} [val]"):
-            input_ids = batch["input_ids"].to(DEVICE)
-            attn_mask = batch["attention_mask"].to(DEVICE)
-            logits    = model(input_ids=input_ids, attention_mask=attn_mask).logits
-            preds     = logits.argmax(dim=-1).cpu().tolist()
-            all_preds.extend(preds)
-            all_labels.extend(batch["label"].tolist())
+        for batch in val_loader:
+            logits = model(
+                input_ids=batch["input_ids"].to(device),
+                attention_mask=batch["attention_mask"].to(device),
+            ).logits
+            preds.extend(logits.argmax(-1).cpu().tolist())
+            targets.extend(batch["label"].tolist())
+    val_acc = accuracy_score(targets, preds)
+    val_f1  = f1_score(targets, preds, average="macro")
+    elapsed = time.time() - t0
+    print(f"Epoch {epoch}/{EPOCHS}  loss={avg_loss:.4f}  "
+          f"val_acc={val_acc:.4f}  val_f1={val_f1:.4f}  ({elapsed:.0f}s)")
+    history.append({"epoch": epoch, "loss": avg_loss,
+                    "val_acc": val_acc, "val_f1": val_f1})
 
-    from sklearn.metrics import f1_score
-    val_f1 = f1_score(all_labels, all_preds, average="macro")
-    print(f"  Loss: {avg_loss:.4f}  Val Macro-F1: {val_f1:.4f}")
+    if val_acc > best_val_acc:
+        best_val_acc = val_acc
+        os.makedirs(MODEL_DIR, exist_ok=True)
+        model.save_pretrained(MODEL_DIR)
+        tokenizer.save_pretrained(MODEL_DIR)
+        print(f"  -> Saved best checkpoint  (val_acc={best_val_acc:.4f})")
 
-    if val_f1 > best_val_f1:
-        best_val_f1 = val_f1
-        model.save_pretrained("data/processed/best_codebert")
-        print(f"  ** Saved best model (F1={best_val_f1:.4f})")
-```
-
-### 7.3 Run Training
-
-```bash
-python -m src.train \
-  --epochs 5 \
-  --batch_size 16 \
-  --lr 2e-5 \
-  --warmup 0.1 \
-  --seed 42
-```
-
----
-
-## 8. Evaluation
-
-### 8.1 Test Set Evaluation
-
-```python
-# src/evaluate.py
-import torch, pickle, pandas as pd
-from torch.utils.data import DataLoader
-from transformers import RobertaForSequenceClassification
-from sklearn.metrics import (accuracy_score, f1_score,
-                             precision_score, recall_score,
-                             classification_report, confusion_matrix)
-import seaborn as sns, matplotlib.pyplot as plt
-
-from src.dataset import CodeDataset
-
-DEVICE   = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-test_df  = pd.read_csv("data/processed/test.csv")
-loader   = DataLoader(CodeDataset(test_df), batch_size=32, shuffle=False)
-
-model = RobertaForSequenceClassification.from_pretrained("data/processed/best_codebert").to(DEVICE)
+# ── Test evaluation ───────────────────────────────────────────────────────────
+print("\nLoading best checkpoint for test evaluation...")
+model = RobertaForSequenceClassification.from_pretrained(MODEL_DIR).to(device)
 model.eval()
-
-all_preds, all_labels = [], []
+preds, targets = [], []
 with torch.no_grad():
-    for batch in loader:
+    for batch in test_loader:
         logits = model(
-            input_ids=batch["input_ids"].to(DEVICE),
-            attention_mask=batch["attention_mask"].to(DEVICE),
+            input_ids=batch["input_ids"].to(device),
+            attention_mask=batch["attention_mask"].to(device),
         ).logits
-        all_preds.extend(logits.argmax(-1).cpu().tolist())
-        all_labels.extend(batch["label"].tolist())
+        preds.extend(logits.argmax(-1).cpu().tolist())
+        targets.extend(batch["label"].tolist())
 
-print("=== CodeBERT Test Results ===")
-print(f"Accuracy : {accuracy_score(all_labels, all_preds):.4f}")
-print(f"Macro-F1 : {f1_score(all_labels, all_preds, average='macro'):.4f}")
-print(f"Macro-P  : {precision_score(all_labels, all_preds, average='macro'):.4f}")
-print(f"Macro-R  : {recall_score(all_labels, all_preds, average='macro'):.4f}")
-print()
-print(classification_report(all_labels, all_preds))
+test_acc = accuracy_score(targets, preds)
+test_f1  = f1_score(targets, preds, average="macro")
+print(f"\n=== Test Results ===")
+print(f"Accuracy : {test_acc:.4f}")
+print(f"Macro-F1 : {test_f1:.4f}")
 
-# --- Confusion Matrix ---
-with open("data/processed/label_encoder.pkl", "rb") as f:
-    le = pickle.load(f)
-cm = confusion_matrix(all_labels, all_preds)
-fig, ax = plt.subplots(figsize=(10, 8))
-sns.heatmap(cm, annot=True, fmt="d", xticklabels=le.classes_, yticklabels=le.classes_,
-            cmap="Blues", ax=ax)
-ax.set_xlabel("Predicted"); ax.set_ylabel("True")
-ax.set_title("CodeBERT Confusion Matrix")
-plt.tight_layout(); plt.savefig("data/processed/confusion_matrix.png", dpi=150)
+os.makedirs("results", exist_ok=True)
+with open(RESULTS_FILE, "wb") as f:
+    pickle.dump({
+        "test_acc": test_acc,
+        "test_f1":  test_f1,
+        "preds":    preds,
+        "targets":  targets,
+        "history":  history,
+    }, f)
+print(f"Results saved -> {RESULTS_FILE}")
 ```
-
-### 8.2 Results Table
-
-| Model                     | Accuracy | Macro-F1 | Macro-P | Macro-R |
-|---------------------------|----------|----------|---------|---------|
-| TF-IDF + LR (baseline)    | [X.XXXX] | [X.XXXX] | [X.XXXX]| [X.XXXX]|
-| CodeBERT (fine-tuned)     | [X.XXXX] | [X.XXXX] | [X.XXXX]| [X.XXXX]|
-| Δ (CodeBERT − Baseline)   | [+X.XX]  | [+X.XX]  | [+X.XX] | [+X.XX] |
 
 ---
 
-## 9. Error Analysis
+## 9. Analysis and Visualization
+
+Run in `notebooks/04_analysis.ipynb`.
+
+### 9.1 Load Both Results
 
 ```python
-# Identify misclassified samples
-test_df["pred"] = all_preds
-errors = test_df[test_df["label"] != test_df["pred"]].copy()
+import pickle
+import numpy as np
 
+with open("results/baseline_results.pkl", "rb") as f:
+    bl = pickle.load(f)
+with open("results/codebert_results.pkl", "rb") as f:
+    cb = pickle.load(f)
 with open("data/processed/label_encoder.pkl", "rb") as f:
     le = pickle.load(f)
 
-errors["true_cwe"] = le.inverse_transform(errors["label"])
-errors["pred_cwe"] = le.inverse_transform(errors["pred"])
+print(f"Baseline  acc={bl['test_acc']:.4f}  f1={bl['test_f1']:.4f}")
+print(f"CodeBERT  acc={cb['test_acc']:.4f}  f1={cb['test_f1']:.4f}")
+```
 
-# Most frequent error pairs
-print(errors.groupby(["true_cwe", "pred_cwe"]).size().sort_values(ascending=False).head(10))
+### 9.2 Confusion Matrix
 
-# Show a few examples
-for _, row in errors.head(3).iterrows():
-    print(f"\nTrue: {row['true_cwe']}  Predicted: {row['pred_cwe']}")
-    print(row["func_before"][:300])
-    print("---")
+```python
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.metrics import confusion_matrix
+
+# CodeBERT confusion matrix (44x44 — use abbreviated family names)
+cm = confusion_matrix(cb["targets"], cb["preds"])
+fig, ax = plt.subplots(figsize=(16, 14))
+sns.heatmap(cm, annot=False, cmap="Blues", ax=ax,
+            xticklabels=le.classes_, yticklabels=le.classes_)
+ax.set_xlabel("Predicted Family"); ax.set_ylabel("True Family")
+ax.set_title("CodeBERT — Confusion Matrix (44 Malware Families)")
+plt.xticks(rotation=90, fontsize=7)
+plt.yticks(rotation=0,  fontsize=7)
+plt.tight_layout()
+plt.savefig("results/confusion_matrix.png", dpi=150)
+plt.show()
+```
+
+### 9.3 Per-Family F1 Score
+
+```python
+from sklearn.metrics import f1_score
+
+per_family_f1_bl = f1_score(bl["targets"], bl["preds"], average=None)
+per_family_f1_cb = f1_score(cb["targets"], cb["preds"], average=None)
+
+# Sort by CodeBERT F1 descending
+order = np.argsort(per_family_f1_cb)[::-1]
+fig, ax = plt.subplots(figsize=(14, 5))
+x = np.arange(len(le.classes_))
+ax.bar(x - 0.2, per_family_f1_bl[order], width=0.4, label="Baseline", alpha=0.8, color="steelblue")
+ax.bar(x + 0.2, per_family_f1_cb[order], width=0.4, label="CodeBERT", alpha=0.8, color="tomato")
+ax.set_xticks(x)
+ax.set_xticklabels(le.classes_[order], rotation=90, fontsize=7)
+ax.set_ylabel("F1 Score"); ax.set_title("Per-Family F1 — Baseline vs CodeBERT")
+ax.legend()
+plt.tight_layout()
+plt.savefig("results/per_family_f1.png", dpi=150)
+plt.show()
+```
+
+### 9.4 Model Comparison Bar Chart
+
+```python
+metrics   = ["Accuracy", "Macro F1"]
+bl_scores = [bl["test_acc"], bl["test_f1"]]
+cb_scores = [cb["test_acc"], cb["test_f1"]]
+
+fig, ax = plt.subplots(figsize=(5, 4))
+x = np.arange(len(metrics))
+ax.bar(x - 0.2, bl_scores, width=0.35, label="TF-IDF + LR", color="steelblue")
+ax.bar(x + 0.2, cb_scores, width=0.35, label="CodeBERT",    color="tomato")
+ax.set_xticks(x); ax.set_xticklabels(metrics)
+ax.set_ylim(0, 1); ax.set_ylabel("Score")
+ax.set_title("Model Comparison")
+ax.legend()
+for i, (b, c) in enumerate(zip(bl_scores, cb_scores)):
+    ax.text(i - 0.2, b + 0.01, f"{b:.3f}", ha="center", fontsize=9)
+    ax.text(i + 0.2, c + 0.01, f"{c:.3f}", ha="center", fontsize=9)
+plt.tight_layout()
+plt.savefig("results/model_comparison.png", dpi=150)
+plt.show()
 ```
 
 ---
 
-## 10. Report & Slides Compilation
-
-### 10.1 Compile LaTeX Report
+## 10. Report Compilation
 
 ```bash
-cd report/
+cd ~/project/report/
 
-# Download ACL 2023 style files first
+# Download ACL 2023 style files (required once)
 wget https://github.com/acl-org/acl-style-files/raw/master/latex/acl.sty
 wget https://github.com/acl-org/acl-style-files/raw/master/latex/acl_natbib.sty
 
-# Compile (run twice for references)
+# Compile (run sequence twice for cross-references)
 pdflatex main.tex
 bibtex main
 pdflatex main.tex
 pdflatex main.tex
-```
 
-### 10.2 View Slides
-
-```bash
-# Open in browser
-open slides/slides.html          # macOS
-xdg-open slides/slides.html      # Linux
-start slides/slides.html         # Windows
-```
-
-### 10.3 Export Slides to PDF (optional)
-
-```bash
-# Using Chrome headless
-google-chrome --headless --print-to-pdf=slides/slides.pdf \
-  --print-to-pdf-no-header slides/slides.html
+# View output
+ls -lh main.pdf
 ```
 
 ---
@@ -555,23 +615,27 @@ google-chrome --headless --print-to-pdf=slides/slides.pdf \
 ## 11. Submission Checklist
 
 ```
-Deliverables
- [ ] report/main.tex compiled to PDF without errors
- [ ] All [X.XXXX] placeholders replaced with real numbers
- [ ] All [FILL IN] sections completed
- [ ] slides/slides.html opens in Chrome/Firefox without errors
- [ ] Slides use actual result values (not placeholders)
- [ ] Code is reproducible (fixed random seeds, requirements.txt present)
- [ ] data/processed/ contains train.csv, val.csv, test.csv
- [ ] Confusion matrix figure saved and referenced in report
+Data & Preprocessing
+ [ ] data/bodmas.npz and data/bodmas_metadata.csv uploaded to cluster
+ [ ] data/processed/splits.pkl exists with 34,979 / 7,495 / 7,496 samples
+ [ ] data/processed/label_encoder.pkl saved (44 classes)
 
-Code Quality
- [ ] src/ modules importable (no circular imports)
- [ ] Training completes end-to-end with python -m src.train
- [ ] Evaluation script prints all four metrics
+Training
+ [ ] sbatch run_train.sh submitted on bigTiger partition
+ [ ] results/codebert_results.pkl saved after training completes
+ [ ] results/baseline_results.pkl saved after baseline run
+
+Results
+ [ ] All [X.XXXX] placeholders in report/main.tex replaced with real values
+ [ ] results/confusion_matrix.png generated
+ [ ] results/per_family_f1.png generated
+
+Report
+ [ ] report/main.tex compiles to PDF without errors (pdflatex + bibtex)
+ [ ] Minimum 4 pages in compiled PDF
+ [ ] Contributions section contains your full name and UM ID
+ [ ] Exactly 4 BibTeX entries in references.bib
 
 Repository
- [ ] .gitignore excludes .venv/, __pycache__/, *.pyc, data/raw/
- [ ] requirements.txt committed
- [ ] README references this guide
+ [ ] run_jupyter.sh and run_train.sh both specify partition=bigTiger
 ```
