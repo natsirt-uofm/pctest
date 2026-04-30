@@ -30,11 +30,11 @@ RESULTS_DIR        = "results"
 NUM_CLASSES        = 44
 INPUT_DIM          = 2381
 BATCH_SIZE         = 256
-EPOCHS             = 50
+EPOCHS             = 100
 LR                 = 1e-3
 WEIGHT_DECAY       = 1e-4
-EARLY_STOP_PATIENCE = 10
-SCHEDULER_PATIENCE  = 3
+EARLY_STOP_PATIENCE = 15
+SCHEDULER_PATIENCE  = 5
 SEED               = 42
 
 torch.manual_seed(SEED)
@@ -58,6 +58,20 @@ y_test  = d["y_test"]
 le      = d["label_encoder"]
 
 print(f"Train: {X_train.shape}, Val: {X_val.shape}, Test: {X_test.shape}")
+
+from sklearn.preprocessing import StandardScaler
+
+print("Normalizing features with StandardScaler...")
+scaler = StandardScaler()
+X_train = scaler.fit_transform(X_train)
+X_val   = scaler.transform(X_val)
+X_test  = scaler.transform(X_test)
+
+import pickle as _pickle
+os.makedirs("models", exist_ok=True)
+with open("models/scaler.pkl", "wb") as f:
+    _pickle.dump(scaler, f)
+print("Scaler saved to models/scaler.pkl")
 
 # ── TF-IDF + LR Baseline ─────────────────────────────────────────────────────
 print("\n=== TF-IDF + Logistic Regression Baseline ===")
@@ -120,28 +134,45 @@ class MLP(nn.Module):
     def __init__(self, input_dim, num_classes):
         super().__init__()
         self.net = nn.Sequential(
-            nn.Linear(input_dim, 1024),
+            nn.Linear(input_dim, 2048),
+            nn.BatchNorm1d(2048),
+            nn.ReLU(),
+            nn.Dropout(0.4),
+
+            nn.Linear(2048, 1024),
             nn.BatchNorm1d(1024),
             nn.ReLU(),
             nn.Dropout(0.3),
+
             nn.Linear(1024, 512),
             nn.BatchNorm1d(512),
             nn.ReLU(),
-            nn.Dropout(0.3),
+            nn.Dropout(0.2),
+
             nn.Linear(512, 256),
             nn.BatchNorm1d(256),
             nn.ReLU(),
-            nn.Dropout(0.2),
+            nn.Dropout(0.1),
+
             nn.Linear(256, num_classes),
         )
 
     def forward(self, x):
         return self.net(x)
 
+from sklearn.utils.class_weight import compute_class_weight
+
+class_weights = compute_class_weight(
+    class_weight="balanced",
+    classes=np.unique(y_train),
+    y=y_train
+)
+class_weights_tensor = torch.tensor(class_weights, dtype=torch.float32).to(DEVICE)
+
 model     = MLP(INPUT_DIM, NUM_CLASSES).to(DEVICE)
-criterion = nn.CrossEntropyLoss()
+criterion = nn.CrossEntropyLoss(weight=class_weights_tensor)
 optimizer = AdamW(model.parameters(), lr=LR, weight_decay=WEIGHT_DECAY)
-scheduler = ReduceLROnPlateau(optimizer, mode="max", patience=SCHEDULER_PATIENCE)
+scheduler = ReduceLROnPlateau(optimizer, mode="max", factor=0.5, patience=SCHEDULER_PATIENCE, verbose=True)
 
 # ── Training loop ─────────────────────────────────────────────────────────────
 print("\n=== MLP Training ===")
@@ -153,10 +184,13 @@ for epoch in range(1, EPOCHS + 1):
     model.train()
     total_loss = 0.0
     for X_batch, y_batch in train_loader:
-        X_batch, y_batch = X_batch.to(DEVICE), y_batch.to(DEVICE)
+        X_batch = X_batch.to(DEVICE)
+        y_batch = y_batch.to(DEVICE)
         optimizer.zero_grad()
-        loss = criterion(model(X_batch), y_batch)
+        out = model(X_batch)
+        loss = criterion(out, y_batch)
         loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         optimizer.step()
         total_loss += loss.item()
 
