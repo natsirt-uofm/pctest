@@ -1,0 +1,44 @@
+*** Starting Jupyter on: itiger01
+[I 2026-04-16 00:26:25.847 ServerApp] jupyter_lsp | extension was successfully linked.
+[I 2026-04-16 00:26:25.851 ServerApp] jupyter_server_terminals | extension was successfully linked.
+[I 2026-04-16 00:26:25.854 ServerApp] jupyterlab | extension was successfully linked.
+[I 2026-04-16 00:26:25.857 ServerApp] notebook | extension was successfully linked.
+[I 2026-04-16 00:26:26.197 ServerApp] notebook_shim | extension was successfully linked.
+[I 2026-04-16 00:26:26.223 ServerApp] notebook_shim | extension was successfully loaded.
+[I 2026-04-16 00:26:26.225 ServerApp] jupyter_lsp | extension was successfully loaded.
+[I 2026-04-16 00:26:26.225 ServerApp] jupyter_server_terminals | extension was successfully loaded.
+[I 2026-04-16 00:26:26.232 LabApp] JupyterLab extension loaded from /home/jtbass1/miniconda3/envs/malware/lib/python3.9/site-packages/jupyterlab
+[I 2026-04-16 00:26:26.232 LabApp] JupyterLab application directory is /home/jtbass1/miniconda3/envs/malware/share/jupyter/lab
+[I 2026-04-16 00:26:26.233 LabApp] Extension Manager is 'pypi'.
+[I 2026-04-16 00:26:26.267 ServerApp] jupyterlab | extension was successfully loaded.
+[I 2026-04-16 00:26:26.271 ServerApp] notebook | extension was successfully loaded.
+[I 2026-04-16 00:26:26.272 ServerApp] Serving notebooks from local directory: /home/jtbass1/project
+[I 2026-04-16 00:26:26.272 ServerApp] Jupyter Server 2.17.0 is running at:
+[I 2026-04-16 00:26:26.272 ServerApp] http://itiger01:8888/tree?token=bedb29d7c8a09397fa1d96c3a6209c9b5be8379d35b271f0
+[I 2026-04-16 00:26:26.272 ServerApp]     http://127.0.0.1:8888/tree?token=bedb29d7c8a09397fa1d96c3a6209c9b5be8379d35b271f0
+[I 2026-04-16 00:26:26.272 ServerApp] Use Control-C to stop this server and shut down all kernels (twice to skip confirmation).
+[C 2026-04-16 00:26:26.276 ServerApp] 
+    
+    To access the server, open this file in a browser:
+        file:///home/jtbass1/.local/share/jupyter/runtime/jpserver-1745767-open.html
+    Or copy and paste one of these URLs:
+        http://itiger01:8888/tree?token=bedb29d7c8a09397fa1d96c3a6209c9b5be8379d35b271f0
+        http://127.0.0.1:8888/tree?token=bedb29d7c8a09397fa1d96c3a6209c9b5be8379d35b271f0
+[I 2026-04-16 00:26:26.296 ServerApp] Skipped non-installed server(s): basedpyright, bash-language-server, dockerfile-language-server-nodejs, javascript-typescript-langserver, jedi-language-server, julia-language-server, pyrefly, pyright, python-language-server, python-lsp-server, r-languageserver, sql-language-server, texlab, typescript-language-server, unified-language-server, vscode-css-languageserver-bin, vscode-html-languageserver-bin, vscode-json-languageserver-bin, yaml-language-server
+[I 2026-04-16 00:28:26.383 ServerApp] Creating new notebook in 
+[I 2026-04-16 00:28:26.780 ServerApp] Saving file at /Untitled.ipynb
+[I 2026-04-16 00:28:26.863 ServerApp] Kernel started: 38772e56-42d9-4c1a-bce8-36347bb09d81
+[I 2026-04-16 00:28:27.489 ServerApp] Connecting to kernel 38772e56-42d9-4c1a-bce8-36347bb09d81.
+[W 2026-04-16 00:28:27.491 ServerApp] The websocket_ping_timeout (90000) cannot be longer than the websocket_ping_interval (30000).
+    Setting websocket_ping_timeout=30000
+[I 2026-04-16 00:28:27.700 ServerApp] Connecting to kernel 38772e56-42d9-4c1a-bce8-36347bb09d81.
+[I 2026-04-16 00:28:27.793 ServerApp] Connecting to kernel 38772e56-42d9-4c1a-bce8-36347bb09d81.
+[I 2026-04-16 00:28:27.961 ServerApp] Connecting to kernel 38772e56-42d9-4c1a-bce8-36347bb09d81.
+[I 2026-04-16 00:28:28.189 ServerApp] Connecting to kernel 38772e56-42d9-4c1a-bce8-36347bb09d81.
+[I 2026-04-16 00:28:42.530 ServerApp] Connecting to kernel 38772e56-42d9-4c1a-bce8-36347bb09d81.
+[I 2026-04-16 00:28:42.841 ServerApp] Connecting to kernel 38772e56-42d9-4c1a-bce8-36347bb09d81.
+[I 2026-04-16 00:30:43.065 ServerApp] Saving file at /sprint1.ipynb
+[I 2026-04-16 00:32:43.351 ServerApp] Saving file at /sprint1.ipynb
+[I 2026-04-16 00:34:45.213 ServerApp] Saving file at /sprint1.ipynb
+[I 2026-04-16 00:36:45.885 ServerApp] Saving file at /sprint1.ipynb
+slurmstepd: error: *** JOB 59520 ON itiger01 CANCELLED AT 2026-04-16T00:38:26 ***
