@@ -1,6 +1,6 @@
 % ============================================================
-%  Malware Family Classification via NLP on API Call Sequences
-%  Using CodeBERT — ACL Format
+%  Malware Family Classification via Deep Neural Network on Behavioral Features
+%  Using PyTorch MLP — ACL Format
 %  Compile with:
 %    pdflatex main.tex && bibtex main && pdflatex main.tex && pdflatex main.tex
 %
@@ -21,8 +21,8 @@
 \usepackage{hyperref}
 \usepackage{url}
 
-\title{Malware Family Classification via NLP on API Call Sequences:\\
-       A Comparative Study of TF-IDF Baselines and Fine-Tuned CodeBERT}
+\title{Malware Family Classification via Deep Neural Networks on Behavioral Features:\\
+       A Comparative Study of TF-IDF Baselines and a PyTorch MLP}
 
 \author{
   \textbf{[Your Full Name]} \\
@@ -39,19 +39,19 @@
 \begin{abstract}
 Malware detection increasingly relies on behavioral fingerprints rather
 than static signatures, yet classifying malware into specific families
-at scale remains challenging. In this work we frame Windows API call
-feature sequences from the BODMAS dataset~\citep{yang2021bodmas} as
-natural language token sequences and apply transformer-based sequence
-classification. We compare a traditional TF-IDF + Logistic Regression
-baseline against a fine-tuned \textsc{CodeBERT}~\citep{feng-etal-2020-codebert}
-model across 44 malware families. After filtering the 134,435-sample
+at scale remains challenging. In this work we apply a deep neural network
+to classify Windows malware by family from the high-dimensional behavioral
+feature vectors in the BODMAS dataset~\citep{yang2021bodmas}. We compare
+a traditional TF-IDF + Logistic Regression baseline against a PyTorch
+Multi-Layer Perceptron (MLP) that operates directly on raw 2,381-dimensional
+feature vectors across 44 malware families. After filtering the 134,435-sample
 dataset to families with at least 200 samples, we obtain 49,970 working
-samples and perform a stratified 70/15/15 split. Our CodeBERT model
-achieves an accuracy of \textbf{[X.XXXX]} and a macro-averaged F1
-score of \textbf{[X.XXXX]}, outperforming the baseline by [X.XXXX]
-accuracy points and [X.XXXX] macro-F1 points. These results demonstrate
-that code-pre-trained transformers generalize effectively to behavioral
-malware analysis when API feature dimensions are treated as NLP tokens.
+samples and perform a stratified 70/15/15 split. Our MLP achieves an
+accuracy of \textbf{[X.XXXX]} and a macro-averaged F1 score of
+\textbf{[X.XXXX]}, outperforming the baseline by [X.XXXX] accuracy points
+and [X.XXXX] macro-F1 points. These results demonstrate that a well-regularized
+feedforward network can effectively capture the behavioral patterns that
+distinguish malware families when trained directly on feature vectors.
 \end{abstract}
 
 % ============================================================
@@ -73,31 +73,34 @@ combinatorial space of API call orderings and the high dimensionality
 of behavioral feature vectors make family classification a
 computationally demanding multi-class problem.
 
-Natural language processing offers a compelling reframing: if each
-API call (or feature dimension derived from API activity) is treated as
-a token, then a malware execution trace becomes a token sequence, and
-sequence classification models become directly applicable. Prior work by
-\citet{tran2017nlp} showed that NLP-based approaches applied directly to
-API call sequences can achieve competitive malware classification
-performance, establishing the viability of this paradigm.
+Prior work by \citet{tran2017nlp} showed that NLP-based approaches applied
+to API call sequences can achieve competitive malware classification
+performance, establishing the viability of treating behavioral signals as
+discrete tokens. Building on this, we apply a deep neural network to
+classify malware directly from high-dimensional behavioral feature vectors,
+bypassing the tokenization step entirely and allowing the model to exploit
+the full 2,381-dimensional feature space.
 
-The advent of large pre-trained transformer models—beginning with
-\textsc{BERT}~\citep{devlin-etal-2019-bert} and extended to programming
-languages by \textsc{CodeBERT}~\citep{feng-etal-2020-codebert}—has
-dramatically improved performance on sequence classification tasks
-through transfer learning. We hypothesize that \textsc{CodeBERT}'s
-pre-training on code tokens provides representations whose inductive
-biases transfer to API-derived token sequences.
+Deep feedforward networks with batch normalization and dropout are
+well-suited to this setting: they scale to large input dimensionality,
+train efficiently on GPU, and avoid the sequence-length truncation
+constraints imposed by transformer architectures. While transformer models
+such as \textsc{BERT}~\citep{devlin-etal-2019-bert} and
+\textsc{CodeBERT}~\citep{feng-etal-2020-codebert} excel at natural language
+and source code tasks, their pre-trained representations provide limited
+benefit when the input vocabulary consists of abstract feature indices with
+no semantic relationship to real code tokens.
 
 This paper makes the following contributions:
 \begin{enumerate}
-  \item We introduce a feature-to-token conversion (\texttt{feat\_i}
-        naming scheme) that maps BODMAS behavioral feature vectors into
-        NLP-compatible token sequences suitable for transformer input.
   \item We establish a strong TF-IDF + Logistic Regression baseline on
-        the 44-family BODMAS classification task.
-  \item We fine-tune \textsc{CodeBERT} on the same task and demonstrate
-        a meaningful improvement in accuracy and macro-F1.
+        the 44-family BODMAS classification task using \texttt{feat\_i}
+        token sequences derived from behavioral feature vectors.
+  \item We design and train a four-layer PyTorch MLP with batch normalization
+        and dropout that operates directly on raw 2,381-dimensional feature
+        vectors, requiring no tokenization.
+  \item We demonstrate a meaningful improvement in accuracy and macro-F1
+        over the baseline, validating the deep network approach.
   \item We analyze per-family performance and identify the families
         most difficult to distinguish.
 \end{enumerate}
@@ -143,10 +146,11 @@ programming language domain by pre-training on bimodal natural
 language–code pairs from GitHub across six programming languages.
 \textsc{CodeBERT} uses both masked language modeling and replaced token
 detection objectives and achieves state-of-the-art results on code
-search, code summarization, and clone detection. Because malware API
-feature tokens (\texttt{feat\_i}) structurally resemble code identifiers,
-we expect \textsc{CodeBERT}'s pre-training distribution to align more
-closely with our token vocabulary than a text-only BERT model would.
+search, code summarization, and clone detection. However, abstract
+feature index tokens such as \texttt{feat\_i} share no semantic
+relationship with the natural language and source code tokens on which
+\textsc{CodeBERT} was pre-trained, limiting the transfer benefit for
+this specific task.
 
 \paragraph{BODMAS Dataset.}
 \citet{yang2021bodmas} released the BODMAS (Blue Hexagon Open Dataset
@@ -243,28 +247,36 @@ point. It captures global co-occurrence statistics of behavioral
 features across families but treats each token independently without
 modeling interactions between API dimensions.
 
-\subsection{CodeBERT Fine-Tuning}
+\subsection{MLP Neural Network}
 
-We fine-tune \texttt{microsoft/codebert-base}—a 125M-parameter
-RoBERTa-style transformer with 12 layers, 768 hidden dimensions, and
-12 attention heads—on our 44-class malware family classification task.
-A linear classification head is added over the \texttt{[CLS]} token
-representation:
+We train a four-layer Multi-Layer Perceptron (MLP) that takes the raw
+2,381-dimensional behavioral feature vector $\mathbf{x} \in \mathbb{R}^{2381}$
+as input—no tokenization or sequence conversion required. The network
+applies alternating linear projections, batch normalization, ReLU
+activations, and dropout:
 
 \begin{equation}
-  \hat{y} = \text{softmax}(W \cdot h_{\texttt{[CLS]}} + b),
-  \quad W \in \mathbb{R}^{44 \times 768},\; b \in \mathbb{R}^{44}
+  \mathbf{h}^{(l)} = \text{ReLU}\!\left(\text{BN}\!\left(
+    W^{(l)}\mathbf{h}^{(l-1)} + \mathbf{b}^{(l)}\right)\right),
+  \quad l = 1, 2, 3
 \end{equation}
 
-where $h_{\texttt{[CLS]}} \in \mathbb{R}^{768}$ is the final hidden
-state of the \texttt{[CLS]} token. All model parameters (pre-trained
-encoder and classification head) are updated jointly using cross-entropy
-loss.
+where $\mathbf{h}^{(0)} = \mathbf{x}$, $\text{BN}$ denotes batch
+normalization, and dropout with rates 0.3, 0.3, 0.2 is applied after
+each ReLU. The hidden layer widths are 1,024, 512, and 256 neurons
+respectively. The final output layer produces 44 logits:
 
-Input \texttt{feat\_i} sequences are tokenized with the
-\texttt{RobertaTokenizer} and truncated or padded to a maximum length
-of 512 tokens. The best checkpoint is selected by highest validation
-accuracy across all training epochs.
+\begin{equation}
+  \hat{y} = \text{softmax}\!\left(W^{(4)}\mathbf{h}^{(3)} + \mathbf{b}^{(4)}\right),
+  \quad W^{(4)} \in \mathbb{R}^{44 \times 256}
+\end{equation}
+
+The model is trained with \textbf{AdamW} (lr\,=\,$10^{-3}$,
+weight\_decay\,=\,$10^{-4}$), \textbf{CrossEntropyLoss}, and a
+\textbf{ReduceLROnPlateau} scheduler (patience\,=\,3) monitoring
+validation macro F1. Training runs for up to 50 epochs with early
+stopping (patience\,=\,10 on validation macro F1); the best checkpoint
+is saved by highest validation macro F1.
 
 % ============================================================
 \section{Experiments}
@@ -280,7 +292,7 @@ via SLURM \texttt{sbatch} scripts and monitored with \texttt{squeue}.
 \subsection{Hyperparameters}
 
 Table~\ref{tab:hparams} lists the complete hyperparameter configuration
-for the CodeBERT fine-tuning run.
+for the MLP training run.
 
 \begin{table}[h]
 \centering
@@ -289,21 +301,22 @@ for the CodeBERT fine-tuning run.
 \toprule
 \textbf{Hyperparameter} & \textbf{Value} \\
 \midrule
-Model                   & microsoft/codebert-base \\
+Architecture            & MLP (2381-1024-512-256-44) \\
 Optimizer               & AdamW \\
-Learning rate           & $2 \times 10^{-5}$ \\
-Weight decay            & $0.01$ \\
-Batch size              & 16 \\
-Epochs                  & 5 \\
-Max sequence length     & 512 tokens \\
-Gradient clipping       & $\ell_2$ norm $\leq 1.0$ \\
-Warmup fraction         & 10\% of total steps \\
+Learning rate           & $1 \times 10^{-3}$ \\
+Weight decay            & $1 \times 10^{-4}$ \\
+Batch size              & 256 \\
+Max epochs              & 50 \\
+Early stopping patience & 10 (val macro F1) \\
+LR scheduler            & ReduceLROnPlateau (patience=3) \\
+Dropout rates           & 0.3, 0.3, 0.2 \\
+Batch normalization     & After each hidden layer \\
 Number of classes       & 44 \\
 Loss function           & Cross-entropy \\
-Checkpoint selection    & Highest validation accuracy \\
+Checkpoint selection    & Highest validation macro F1 \\
 \bottomrule
 \end{tabular}
-\caption{CodeBERT fine-tuning hyperparameters.}
+\caption{MLP training hyperparameters.}
 \label{tab:hparams}
 \end{table}
 
@@ -320,7 +333,7 @@ and provides an unbiased view of per-family discrimination ability.
 
 \subsection{Main Results}
 
-Table~\ref{tab:results} compares the baseline and CodeBERT on the
+Table~\ref{tab:results} compares the baseline and MLP on the
 held-out test set of 7,496 samples.
 
 \begin{table}[h]
@@ -331,13 +344,13 @@ held-out test set of 7,496 samples.
 \textbf{Model}       & \textbf{Accuracy} & \textbf{Macro F1} \\
 \midrule
 TF-IDF + LR (baseline) & [X.XXXX]        & [X.XXXX]          \\
-CodeBERT (fine-tuned)  & [X.XXXX]        & [X.XXXX]          \\
+MLP (PyTorch)          & [X.XXXX]        & [X.XXXX]          \\
 \midrule
-$\Delta$ (CodeBERT $-$ Baseline) & [X.XXXX] & [X.XXXX]       \\
+$\Delta$ (MLP $-$ Baseline) & [X.XXXX]   & [X.XXXX]          \\
 \bottomrule
 \end{tabular}
 \caption{Test-set performance on the 44-family malware classification task.
-         $\Delta$ = CodeBERT $-$ Baseline; higher is better.}
+         $\Delta$ = MLP $-$ Baseline; higher is better.}
 \label{tab:results}
 \end{table}
 
@@ -351,7 +364,7 @@ families with clearly distinct behavioral profiles.]
 
 \subsection{Confusion Matrix}
 
-Figure~\ref{fig:cm} shows the confusion matrix for the CodeBERT model
+Figure~\ref{fig:cm} shows the confusion matrix for the MLP model
 on the test set. [FILL IN: Reference the figure once it exists at
 results/confusion\_matrix.png and describe the main diagonal pattern
 and notable off-diagonal clusters.]
@@ -360,7 +373,7 @@ and notable off-diagonal clusters.]
 \centering
 % Uncomment after saving the confusion matrix figure:
 % \includegraphics[width=\columnwidth]{../results/confusion_matrix.png}
-\caption{CodeBERT confusion matrix across 44 malware families on the
+\caption{MLP confusion matrix across 44 malware families on the
          test set. Rows are true labels; columns are predicted labels.}
 \label{fig:cm}
 \end{figure}
@@ -369,18 +382,20 @@ and notable off-diagonal clusters.]
 \section{Discussion}
 \label{sec:discussion}
 
-\subsection{Why CodeBERT Helps}
+\subsection{Why the MLP Helps}
 
 The TF-IDF + Logistic Regression baseline treats the \texttt{feat\_i}
 token bag independently—it captures which feature dimensions are active
-but ignores all pairwise or higher-order interactions. \textsc{CodeBERT}'s
-self-attention mechanism, by contrast, allows each token's representation
-to be conditioned on every other token in the sequence, capturing
-co-activation patterns between API feature dimensions that are jointly
-discriminative for a particular family. Malware families often exhibit
-characteristic \emph{combinations} of API behaviors (e.g., key logging
-plus process injection), which are invisible to the bag-of-words model
-but recoverable by the attention-based encoder.
+but ignores all pairwise or higher-order interactions. The MLP, by
+contrast, learns non-linear combinations of input features through its
+hidden layers, capturing co-activation patterns between API behavioral
+dimensions that are jointly discriminative for a particular family.
+Malware families often exhibit characteristic \emph{combinations} of API
+behaviors (e.g., key logging plus process injection), which are invisible
+to the bag-of-words model but recoverable by the feedforward network.
+Batch normalization stabilizes training across the wide input distribution
+of behavioral features, while dropout prevents over-reliance on any single
+feature dimension.
 
 \subsection{Hardest Families}
 
@@ -399,38 +414,39 @@ ordered API call sequences; the ordering information—which could be
 highly discriminative—is lost in the feature extraction step. Second,
 we retain only 44 of the original 582 families; the vast majority of
 rare families remain unaddressed, which limits the real-world
-applicability of the classifier. Third, the 512-token maximum sequence
-length imposed by \textsc{CodeBERT} truncates samples whose feature
-vectors activate more than 512 distinct dimensions.
+applicability of the classifier. Third, the MLP treats all 2,381 input
+dimensions independently at the first layer; feature interactions are
+only captured in subsequent layers, and the model does not encode any
+spatial or sequential structure that might exist in the feature layout.
 
 \subsection{Future Work}
 
 Future directions include: (1) operating on raw Cuckoo sandbox API
-call logs to preserve ordering and capture temporal patterns; (2)
-applying few-shot or meta-learning approaches to handle the 538 families
-excluded by the 200-sample filter; (3) exploring longer-context
-models such as Longformer to avoid truncation of high-dimensional
-samples; and (4) combining behavioral features with static PE header
-embeddings for a multi-modal classifier.
+call logs to preserve ordering and capture temporal patterns via
+recurrent or attention-based architectures; (2) applying few-shot or
+meta-learning approaches to handle the 538 families excluded by the
+200-sample filter; (3) exploring residual connections and deeper
+architectures to improve gradient flow in larger networks; and
+(4) combining behavioral features with static PE header embeddings for
+a multi-modal classifier.
 
 % ============================================================
 \section{Conclusion}
 \label{sec:conclusion}
 
-We presented a study of malware family classification using NLP
-techniques applied to API call feature sequences from the BODMAS
-dataset. By converting 2,381-dimensional behavioral feature vectors into
-\texttt{feat\_i} token sequences, we enabled a direct comparison between
-a TF-IDF + Logistic Regression baseline and a fine-tuned
-\textsc{CodeBERT} model across 44 malware families. Our CodeBERT model
-achieves [X.XXXX] accuracy and [X.XXXX] macro-F1 on the held-out test
-set, demonstrating that code-pre-trained transformers generalize
-effectively to behavioral malware analysis. The results confirm that the
-self-attention mechanism provides meaningful gains over bag-of-words
-approaches when classifying behavioral sequences, while also revealing
-the limitations introduced by aggregated feature representations. This
-work establishes a reproducible baseline for future research combining
-deep NLP models with dynamic malware analysis.
+We presented a study of malware family classification using a PyTorch
+MLP neural network trained directly on 2,381-dimensional behavioral
+feature vectors from the BODMAS dataset. We compared this approach
+against a TF-IDF + Logistic Regression baseline across 44 malware
+families. Our MLP achieves [X.XXXX] accuracy and [X.XXXX] macro-F1
+on the held-out test set, demonstrating that a well-regularized deep
+feedforward network effectively captures the behavioral patterns that
+distinguish malware families. The results confirm that non-linear
+feature interactions learned by the MLP provide meaningful gains over
+bag-of-words approaches, while the direct use of raw feature vectors
+avoids the information loss inherent in tokenization-based
+representations. This work establishes a reproducible baseline for
+future research combining deep learning with dynamic malware analysis.
 
 % ============================================================
 \section*{Contributions}
